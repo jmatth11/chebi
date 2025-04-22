@@ -5,15 +5,48 @@ pub const Errors = error {
     invalid_user_id,
     invalid_mask,
     invalid_payload_len,
+
+    not_supported_type,
+};
+
+pub const UserIDSize = enum(u2) {
+    bit8 = 0,
+    bit16 = 1,
+    bit32 = 2,
+    bit64 = 3,
+
+    pub fn byte_count(self: UserIDSize) usize {
+        return switch (self) {
+            .bit8 => 1,
+            .bit16 => 2,
+            .bit32 => 4,
+            .bit64 => 8,
+        };
+    }
+
+    pub fn from_type(comptime T: type) Errors!UserIDSize {
+        switch (T) {
+            u64 => .bit64,
+            i64 => .bit64,
+            u32 => .bit32,
+            i32 => .bit32,
+            u16 => .bit16,
+            i16 => .bit16,
+            u8 => .bit8,
+            i8 => .bit8,
+            else => .not_supported_type,
+        }
+    }
 };
 
 /// Top Level Flags of the protocol.
 pub const Flags = packed struct(u8) {
-    // The operation code of the protocol message.
+    // TODO change to enum
+    /// The operation code of the protocol message.
     opcode: u4 = 0,
-    // The version of the protocol being used.
+    /// The version of the protocol being used.
     version: u3 = 0,
-    // The "final" flag. Signaling this is the final message.
+    /// The "final" flag. Signaling this is the final message.
     fin: bool = false,
 
     /// Unpack the given byte into this structures properties.
@@ -47,8 +80,14 @@ pub const Info = packed struct(u8) {
 };
 
 pub const UserInfo = packed struct(u8) {
-    id_size: u4 = 0,
-    reserved: u4 = 0,
+    /// Id Size.
+    /// 0 -> 1 byte
+    /// 1 -> 2 bytes
+    /// 2 -> 4 bytes
+    /// 3 -> 8 bytes
+    id_size: UserIDSize = .bit8,
+    /// Reserved bits
+    reserved: u6 = 0,
 
     /// Unpack the given byte into this structures properties.
     pub fn unpack(self: *UserInfo, b: u8) void {
@@ -89,7 +128,7 @@ pub const Protocol = struct {
         }
         self.user_info.unpack(buf[0]);
         offset += 1;
-        const id_length: usize = offset + self.user_info.id_size;
+        const id_length: usize = offset + self.user_info.id_size.byte_count();
         if (buf.len  < id_length) {
             return Errors.invalid_user_id;
         }
