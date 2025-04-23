@@ -7,7 +7,7 @@ test "Flags.unpack with byte" {
     f.unpack(input);
     try std.testing.expectEqual(true, f.fin);
     try std.testing.expectEqual(2, f.version);
-    try std.testing.expectEqual(1, f.opcode);
+    try std.testing.expectEqual(proto.OpCode.nc_text, f.opcode);
 }
 
 test "Flags.pack get byte" {
@@ -15,7 +15,7 @@ test "Flags.pack get byte" {
     var f: proto.Flags = proto.Flags{
         .fin = true,
         .version = 2,
-        .opcode = 1,
+        .opcode = .nc_text,
     };
     const new_b: u8 = f.pack();
     try std.testing.expectEqual(expected, new_b);
@@ -63,7 +63,7 @@ test "Protocol.parse_flags sanity check" {
     p.parse_flags(input);
     try std.testing.expectEqual(true, p.flags.fin);
     try std.testing.expectEqual(2, p.flags.version);
-    try std.testing.expectEqual(1, p.flags.opcode);
+    try std.testing.expectEqual(proto.OpCode.nc_text, p.flags.opcode);
 }
 
 test "Protocol.parse_info sanity check" {

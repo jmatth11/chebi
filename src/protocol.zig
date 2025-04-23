@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// Errors related to Protocols
 pub const Errors = error {
     invalid_user_info,
     invalid_user_id,
@@ -9,12 +10,15 @@ pub const Errors = error {
     not_supported_type,
 };
 
+/// User ID Size enumeration.
+/// Used to inform which integer size the ID is.
 pub const UserIDSize = enum(u2) {
     bit8 = 0,
     bit16 = 1,
     bit32 = 2,
     bit64 = 3,
 
+    /// Get the byte count of the enumeration.
     pub fn byte_count(self: UserIDSize) usize {
         return switch (self) {
             .bit8 => 1,
@@ -24,6 +28,7 @@ pub const UserIDSize = enum(u2) {
         };
     }
 
+    /// Get the User ID Size enumeration from the given integer type.
     pub fn from_type(comptime T: type) Errors!UserIDSize {
         switch (T) {
             u64 => .bit64,
@@ -39,11 +44,37 @@ pub const UserIDSize = enum(u2) {
     }
 };
 
+/// OpCodes for the Protocol.
+/// Non-Control codes are for messages between clients.
+/// Control codes are for messages to/from the server.
+pub const OpCode = enum(u4) {
+    // non-control codes
+
+    nc_continue = 0,
+    nc_text,
+    nc_bin,
+    nc_res1,
+    nc_res2,
+    nc_res3,
+    nc_res4,
+    nc_res5,
+
+    // control codes
+
+    c_connection = 8,
+    c_close,
+    c_ping,
+    c_pong,
+    c_res1,
+    c_res2,
+    c_res3,
+    c_res4,
+};
+
 /// Top Level Flags of the protocol.
 pub const Flags = packed struct(u8) {
-    // TODO change to enum
     /// The operation code of the protocol message.
-    opcode: u4 = 0,
+    opcode: OpCode = .nc_continue,
     /// The version of the protocol being used.
     version: u3 = 0,
     /// The "final" flag. Signaling this is the final message.
@@ -115,12 +146,17 @@ pub const Protocol = struct {
     /// The payload length.
     payload_len: u16 = 0,
 
+    /// Parse the flags from the given byte.
     pub fn parse_flags(self: *Protocol, b: u8) void {
         self.flags.unpack(b);
     }
+
+    /// Parse the Message info from the given byte.
     pub fn parse_info(self: *Protocol, b: u8) void {
         self.info.unpack(b);
     }
+
+    /// Parse the user info from the given buffer.
     pub fn parse_user_info(self: *Protocol, buf: []u8) Errors!usize {
         var offset: usize = 0;
         if (buf.len == 0) {
@@ -136,6 +172,8 @@ pub const Protocol = struct {
         offset = id_length;
         return offset;
     }
+
+    /// Parse the body info from the given buffer.
     pub fn parse_body_info(self: *Protocol, buf: []u8) Errors!usize {
         var offset: usize = 0;
         if (self.info.mask) {
