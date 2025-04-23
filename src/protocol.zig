@@ -184,7 +184,7 @@ pub const Protocol = struct {
             if (buf.len < 4) {
                 return Errors.invalid_mask;
             }
-            self.mask = buf[0..4];
+            self.mask = buf[0..4].*;
             offset += 4;
         }
         if (buf.len < (offset + 2)) {

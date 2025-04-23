@@ -138,6 +138,39 @@ test "Protocol.parse_body_info happy path" {
     const result = try p.parse_body_info(&input);
 
     try std.testing.expectEqual(6, result);
-    try std.testing.expectEqualSlices(u8, expected_mask, p.mask);
-    try std.testing.expectEqual(258, p.payload_len);
+    try std.testing.expectEqualSlices(u8, &expected_mask, &p.mask);
+    try std.testing.expectEqual(513, p.payload_len);
+}
+
+test "Protocol.parse_body_info no mask" {
+    const input: [2]u8 = [_]u8 {
+        0b00000001,
+        0b00000010,
+    };
+    const expected_mask: [4]u8 = [_]u8 {0,0,0,0};
+    var p: proto.Protocol = .{};
+    const result = try p.parse_body_info(&input);
+
+    try std.testing.expectEqual(2, result);
+    try std.testing.expectEqualSlices(u8, &expected_mask, &p.mask);
+    try std.testing.expectEqual(513, p.payload_len);
+}
+
+test "Protocol.parse_body_info missing mask" {
+    const input: [2]u8 = [_]u8 {
+        0b00000001,
+        0b00000010,
+    };
+    var p: proto.Protocol = .{
+        .info = .{
+            .mask = true,
+        },
+    };
+    try std.testing.expectError(proto.Errors.invalid_mask, p.parse_body_info(&input));
+}
+
+test "Protocol.parse_body_info invalid payload length" {
+    const input: [0]u8 = [_]u8 {};
+    var p: proto.Protocol = .{};
+    try std.testing.expectError(proto.Errors.invalid_payload_len, p.parse_body_info(&input));
 }
