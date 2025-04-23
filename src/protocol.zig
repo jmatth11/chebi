@@ -157,7 +157,7 @@ pub const Protocol = struct {
     }
 
     /// Parse the user info from the given buffer.
-    pub fn parse_user_info(self: *Protocol, buf: []u8) Errors!usize {
+    pub fn parse_user_info(self: *Protocol, buf: []const u8) Errors!usize {
         var offset: usize = 0;
         if (buf.len == 0) {
             return Errors.invalid_user_info;
@@ -168,13 +168,17 @@ pub const Protocol = struct {
         if (buf.len  < id_length) {
             return Errors.invalid_user_id;
         }
-        self.id = std.mem.readInt(u64, buf[offset..id_length], .little);
+        self.id = std.mem.readVarInt(
+            u64,
+            buf[offset..id_length],
+            .little,
+        );
         offset = id_length;
         return offset;
     }
 
     /// Parse the body info from the given buffer.
-    pub fn parse_body_info(self: *Protocol, buf: []u8) Errors!usize {
+    pub fn parse_body_info(self: *Protocol, buf: []const u8) Errors!usize {
         var offset: usize = 0;
         if (self.info.mask) {
             if (buf.len < 4) {
@@ -186,7 +190,11 @@ pub const Protocol = struct {
         if (buf.len < (offset + 2)) {
             return Errors.invalid_payload_len;
         }
-        self.payload_len = std.mem.readInt(u16, buf[offset..(offset+2)], .little);
+        self.payload_len = std.mem.readVarInt(
+            u16,
+            buf[offset..(offset+2)],
+            .little,
+        );
         offset += 2;
         return offset;
     }

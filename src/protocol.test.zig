@@ -74,12 +74,70 @@ test "Protocol.parse_info sanity check" {
     try std.testing.expectEqual(5, p.info.channel);
 }
 
-test "Protocol.parse_user_info sanity check" {
-    //const input: u8 = 0b00000010;
-    //var p: proto.Protocol = .{};
-    //p.parse_user_info(input);
-    //try std.testing.expectEqual(proto.UserIDSize.bit32, p.user_info.id_size);
-    //try std.testing.expectEqual(0, p.user_info.reserved);
+test "Protocol.parse_user_info happy path" {
+    const input: [5]u8 = [_]u8 {
+        0b00000010,
+        // 147458
+        0b00000010,
+        0b01000000,
+        0b00000010,
+        0b00000000,
+    };
+    var p: proto.Protocol = .{};
+
+    const result = try p.parse_user_info(&input);
+
+    try std.testing.expectEqual(5, result);
+    try std.testing.expectEqual(proto.UserIDSize.bit32, p.user_info.id_size);
+    try std.testing.expectEqual(0, p.user_info.reserved);
+    try std.testing.expectEqual(147458, p.id);
 }
 
+test "Protocol.parse_user_info empty buffer" {
+    const input: [0]u8 = [_]u8{};
+    var p: proto.Protocol = .{};
 
+    try std.testing.expectError(
+        proto.Errors.invalid_user_info,
+        p.parse_user_info(&input)
+    );
+}
+
+test "Protocol.parse_user_info missing ID" {
+    const input: [1]u8 = [_]u8 {
+        0b00000010,
+    };
+    var p: proto.Protocol = .{};
+
+    try std.testing.expectError(
+        proto.Errors.invalid_user_id,
+        p.parse_user_info(&input)
+    );
+}
+
+test "Protocol.parse_body_info happy path" {
+    const input: [6]u8 = [_]u8 {
+        0b00000001,
+        0b00000010,
+        0b00000100,
+        0b00001000,
+        0b00000001,
+        0b00000010,
+    };
+    const expected_mask: [4]u8 = [_]u8 {
+        0b00000001,
+        0b00000010,
+        0b00000100,
+        0b00001000,
+    };
+    var p: proto.Protocol = .{
+        .info = .{
+            .mask = true,
+        },
+    };
+    const result = try p.parse_body_info(&input);
+
+    try std.testing.expectEqual(6, result);
+    try std.testing.expectEqualSlices(u8, expected_mask, p.mask);
+    try std.testing.expectEqual(258, p.payload_len);
+}
