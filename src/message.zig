@@ -3,18 +3,23 @@ const proto = @import("protocol.zig");
 
 pub const Message = struct {
     alloc: std.mem.Allocator,
-    header: proto.Protocol,
-    payload: []u8,
+    topic: ?[]u8,
+    payload: ?[]u8,
 
     pub fn init(alloc: std.mem.Allocator) Message {
         return Message{
             .alloc = alloc,
-            .header = proto.Protocol{},
-            .payload = undefined,
+            .header = null,
+            .payload = null,
         };
     }
 
     pub fn deinit(self: *Message) void {
-        self.alloc.free(self.payload);
+        if (self.topic != null) {
+            self.alloc.free(self.topic);
+        }
+        if (self.payload != null) {
+            self.alloc.free(self.payload);
+        }
     }
 };
