@@ -111,12 +111,14 @@ pub const Info = packed struct(u8) {
 };
 
 pub const UserInfo = packed struct(u8) {
+    // TODO maybe get rid of this and use (topic name + channel) for uniqueness
     /// Id Size.
     /// 0 -> 1 byte
     /// 1 -> 2 bytes
     /// 2 -> 4 bytes
     /// 3 -> 8 bytes
     id_size: UserIDSize = .bit8,
+    // TODO change to have topic name str length
     /// Reserved bits
     reserved: u6 = 0,
 
