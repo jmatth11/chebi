@@ -5,18 +5,19 @@ const proto = @import("protocol.zig");
 pub const Error = error {
     /// Invalid header length.
     invalid_header_len,
-    /// Invalid payload length. This can apply to both topic name and payload.
-    invalid_payload_len,
+    /// Invalid body length. This can apply to both topic name and payload.
+    invalid_body_len,
     /// Missing topic name for packet.
     missing_topic_name,
+    /// Missing Body.
+    missing_body,
 };
 
 /// Packet structure to store header and payload contents.
 pub const Packet = struct {
     alloc: std.mem.Allocator,
     header: proto.Protocol = .{},
-    topic: ?[]u8 = null,
-    payload: ?[]u8 = null,
+    body: ?[]u8 = null,
 
     /// Initialize a packet.
     pub fn init(alloc: std.mem.Allocator) Packet {
@@ -33,8 +34,15 @@ pub const Packet = struct {
         return p;
     }
 
+    /// Peek header information.
+    /// Parses header metadata needed to know the size of the header.
+    pub fn peek_header(self: *Packet, buf: [2]u8) void {
+        self.header.parse_flags(buf[0]);
+        self.header.parse_info(buf[1]);
+    }
+
     /// Parse header information from the given buffer.
-    pub fn parse_header(self: *Packet, buf: []u8) !usize {
+    pub fn parse_header(self: *Packet, buf: []const u8) !usize {
         if (buf.len < 6) {
             return Error.invalid_header_len;
         }
@@ -49,25 +57,32 @@ pub const Packet = struct {
         return self.header.parse_body_info(buf[2..]) + 2;
     }
 
-    /// Read the topic name and body of the given buffer.
-    pub fn read(self: *Packet, buf: []u8) !usize {
-        if (buf.len < (self.header.topic_len + self.header.payload_len)) {
-            return Error.invalid_payload_len;
+    /// Get the topic name from the body.
+    pub fn get_topic_name(self: *Packet) Error![]const u8 {
+        if (self.body) |body| {
+            if (body.len < self.header.topic_len) {
+                return Error.invalid_body_len;
+            }
+            return body[0..self.header.topic_len];
         }
-        self.topic = try self.alloc.alloc(u8, self.header.topic_len);
-        @memcpy(self.topic, buf);
-        self.payload = try self.alloc.alloc(u8, self.header.payload_len);
-        @memcpy(self.payload, buf[self.header.topic_len..]);
-        return self.topic.?.len + self.payload.?.len;
+        return Error.missing_body;
+    }
+
+    /// Get the payload from the body.
+    pub fn get_payload(self: *Packet) Error![]const u8 {
+        if (self.body) |body| {
+            if (body.len < (self.header.topic_len + self.header.payload_len)) {
+                return Error.invalid_body_len;
+            }
+            return body[self.header.topic_len..];
+        }
+        return Error.missing_body;
     }
 
     /// Deinitialize internals.
     pub fn deinit(self: *Packet) void {
-        if (self.topic) |topic| {
-            self.alloc.free(topic);
-        }
-        if (self.payload) |payload| {
-            self.alloc.free(payload);
+        if (self.body) |body| {
+            self.alloc.free(body);
         }
     }
 };
@@ -78,9 +93,10 @@ pub const PacketCollection = struct {
     opcode: proto.OpCode = proto.OpCode.nc_continue,
     version: u8 = 0,
     channel: u8 = 0,
-    topic: []u8,
+    topic: []const u8 = undefined,
     packets: std.ArrayList(Packet) = undefined,
 
+    /// Init an empty packet collection.
     pub fn init(alloc: std.mem.Allocator) !PacketCollection {
         var pc: PacketCollection = .{};
         pc.alloc = alloc;
@@ -88,6 +104,7 @@ pub const PacketCollection = struct {
         return pc;
     }
 
+    /// Init with a given entry.
     pub fn init_with_entry(alloc: std.mem.Allocator, entry: Packet) !PacketCollection {
         var pc: PacketCollection = .{};
         pc.alloc = alloc;
@@ -96,16 +113,13 @@ pub const PacketCollection = struct {
         return pc;
     }
 
+    /// Add the given entry to the collection, pulling out relevant information.
     pub fn add(self: *PacketCollection, entry: Packet) !void {
         // if it's the first message, pull out metadata.
         if (self.packets.items.len == 0) {
             self.version = entry.header.flags.version;
             self.channel = entry.header.info.channel;
-            if (entry.topic) |topic| {
-                self.topic = topic;
-            } else {
-                return Error.missing_topic_name;
-            }
+            self.topic = try entry.get_topic_name();
         }
         // if it's the final message grab the opcode info.
         if (entry.header.flags.fin) {
@@ -114,6 +128,7 @@ pub const PacketCollection = struct {
         try self.packets.append(entry);
     }
 
+    /// Deinitialize internals.
     pub fn deinit(self: *PacketCollection) void {
         for (self.packets.items) |*item| {
             item.deinit();
