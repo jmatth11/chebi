@@ -128,6 +128,15 @@ pub const PacketCollection = struct {
         try self.packets.append(entry);
     }
 
+    /// Get the entire payload size of all packets.
+    pub fn payload_size(self: *PacketCollection) usize {
+        var result: usize = 0;
+        for (self.packets.items) |item| {
+            result += item.header.payload_len;
+        }
+        return result;
+    }
+
     /// Deinitialize internals.
     pub fn deinit(self: *PacketCollection) void {
         for (self.packets.items) |*item| {
