@@ -35,7 +35,6 @@ pub const Packet = struct {
     }
 
     /// Peek header information.
-    /// Parses header metadata needed to know the size of the header.
     pub fn peek_header(self: *Packet, buf: [2]u8) void {
         self.header.parse_flags(buf[0]);
         self.header.parse_info(buf[1]);
@@ -48,13 +47,9 @@ pub const Packet = struct {
         }
         self.header.parse_flags(buf[0]);
         self.header.parse_info(buf[1]);
-        if (self.header.info.mask){
-            if (buf.len < 10) {
-                return Error.invalid_header_len;
-            }
-        }
+        const body_size: usize = try self.header.parse_body_info(buf[2..]);
         // plus 2 for the 2 bytes above.
-        return self.header.parse_body_info(buf[2..]) + 2;
+        return body_size + 2;
     }
 
     /// Get the topic name from the body.

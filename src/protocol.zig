@@ -2,7 +2,6 @@ const std = @import("std");
 
 /// Errors related to Protocols
 pub const Errors = error {
-    invalid_mask,
     invalid_topic_len,
     invalid_payload_len,
 
@@ -60,9 +59,8 @@ pub const Flags = packed struct(u8) {
 pub const Info = packed struct(u8) {
     /// The message channel ID.
     channel: u7 = 0,
-    /// The mask flag.
-    /// If this is true a mask field is populated to unmask the message.
-    mask: bool = false,
+    /// The compressed flag.
+    compressed: bool = false,
 
     /// Unpack the given byte into this structures properties.
     pub fn unpack(self: *Info, b: u8) void {
@@ -81,18 +79,13 @@ pub const Protocol = struct {
     flags: Flags = Flags{},
     /// Info about the message.
     info: Info = Info{},
-    /// Mask used for un/masking message, if mask flag is true.
-    mask: [4]u8 = [_]u8{0,0,0,0},
     /// The Topic String Length
     topic_len: u16 = 0,
     /// The payload length.
     payload_len: u16 = 0,
 
     /// Get the header size in bytes.
-    pub fn header_size(self: *Protocol) usize {
-        if (self.info.mask) {
-            return 10;
-        }
+    pub fn header_size() usize {
         return 6;
     }
 
@@ -109,13 +102,6 @@ pub const Protocol = struct {
     /// Parse the body info from the given buffer.
     pub fn parse_body_info(self: *Protocol, buf: []const u8) Errors!usize {
         var offset: usize = 0;
-        if (self.info.mask) {
-            if (buf.len < 4) {
-                return Errors.invalid_mask;
-            }
-            self.mask = buf[0..4].*;
-            offset += 4;
-        }
         if (buf.len < (offset + 2)) {
             return Errors.invalid_topic_len;
         }
