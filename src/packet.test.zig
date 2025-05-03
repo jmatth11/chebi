@@ -245,7 +245,7 @@ test "PacketCollection.add success -- one entry" {
     entry.header.payload_len = payload.len;
     entry.body = try std.testing.allocator.alloc(u8, body.len);
     @memcpy(entry.body.?, body);
-    var pc = try packet.PacketCollection.init(
+    var pc = packet.PacketCollection.init(
         std.testing.allocator,
     );
     defer pc.deinit();
@@ -268,7 +268,7 @@ test "PacketCollection.add success -- one entry" {
 test "PacketCollection.add success -- two entries" {
     var entry1 = packet.Packet.init(std.testing.allocator);
     const buf: [2]u8 = [_]u8 {
-        0b10100000,
+        0b00100000,
         0b10000101,
     };
     entry1.peek_header(buf);
@@ -290,7 +290,56 @@ test "PacketCollection.add success -- two entries" {
     entry2.header.payload_len = payload.len;
     entry2.body = try std.testing.allocator.alloc(u8, body.len);
     @memcpy(entry2.body.?, body);
-    var pc = try packet.PacketCollection.init(
+    var pc = packet.PacketCollection.init(
+        std.testing.allocator,
+    );
+    defer pc.deinit();
+
+    try pc.add(entry1);
+
+    try std.testing.expectEqual(1, pc.packets.items.len);
+    try std.testing.expectEqual(proto.OpCode.nc_continue, pc.opcode);
+    try std.testing.expectEqual(entry1.header.flags.version, pc.version);
+    try std.testing.expectEqual(entry1.header.info.channel, pc.channel);
+    try std.testing.expectEqual(try entry1.get_topic_name(), pc.topic);
+
+    try pc.add(entry2);
+
+    try std.testing.expectEqual(2, pc.packets.items.len);
+
+    try std.testing.expectEqual(proto.OpCode.nc_text, pc.opcode);
+    try std.testing.expectEqual(entry2.header.flags.opcode, pc.opcode);
+    try std.testing.expectEqual(entry1.header.flags.version, pc.version);
+    try std.testing.expectEqual(entry1.header.info.channel, pc.channel);
+    try std.testing.expectEqual(try entry1.get_topic_name(), pc.topic);
+}
+
+test "PacketCollection.payload_size multiple entries" {
+    var entry1 = packet.Packet.init(std.testing.allocator);
+    const buf: [2]u8 = [_]u8 {
+        0b00100000,
+        0b10000101,
+    };
+    entry1.peek_header(buf);
+    const topic = "test";
+    const payload = "hello, world!";
+    const body = "testhello, world!";
+    entry1.header.topic_len = topic.len;
+    entry1.header.payload_len = payload.len;
+    entry1.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry1.body.?, body);
+
+    var entry2 = packet.Packet.init(std.testing.allocator);
+    const buf2: [2]u8 = [_]u8 {
+        0b10100001,
+        0b10000101,
+    };
+    entry2.peek_header(buf2);
+    entry2.header.topic_len = topic.len;
+    entry2.header.payload_len = payload.len;
+    entry2.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry2.body.?, body);
+    var pc = packet.PacketCollection.init(
         std.testing.allocator,
     );
     defer pc.deinit();
@@ -298,16 +347,41 @@ test "PacketCollection.add success -- two entries" {
     try pc.add(entry1);
     try pc.add(entry2);
 
-    // TODO finish reworking this test to test properly
-    try std.testing.expectEqual(std.testing.allocator, pc.alloc);
-    try std.testing.expectEqual(
-        std.testing.allocator,
-        pc.packets.allocator,
-    );
-    try std.testing.expectEqual(1, pc.packets.items.len);
+    try std.testing.expectEqual(2, pc.packets.items.len);
+    try std.testing.expectEqual(payload.len * 2, pc.payload_size());
+}
 
-    try std.testing.expectEqual(entry1.header.flags.opcode, pc.opcode);
-    try std.testing.expectEqual(entry1.header.flags.version, pc.version);
-    try std.testing.expectEqual(entry1.header.info.channel, pc.channel);
-    try std.testing.expectEqual(try entry1.get_topic_name(), pc.topic);
+test "PacketCollection.payload_size one entry" {
+    var entry1 = packet.Packet.init(std.testing.allocator);
+    const buf: [2]u8 = [_]u8 {
+        0b00100000,
+        0b10000101,
+    };
+    entry1.peek_header(buf);
+    const topic = "test";
+    const payload = "hello, world!";
+    const body = "testhello, world!";
+    entry1.header.topic_len = topic.len;
+    entry1.header.payload_len = payload.len;
+    entry1.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry1.body.?, body);
+
+    var pc = packet.PacketCollection.init(
+        std.testing.allocator,
+    );
+    defer pc.deinit();
+
+    try pc.add(entry1);
+
+    try std.testing.expectEqual(1, pc.packets.items.len);
+    try std.testing.expectEqual(payload.len, pc.payload_size());
+}
+
+test "PacketCollection.payload_size empty" {
+    var pc = packet.PacketCollection.init(
+        std.testing.allocator,
+    );
+    defer pc.deinit();
+    try std.testing.expectEqual(0, pc.packets.items.len);
+    try std.testing.expectEqual(0, pc.payload_size());
 }
