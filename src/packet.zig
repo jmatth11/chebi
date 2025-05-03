@@ -21,15 +21,14 @@ pub const Packet = struct {
 
     /// Initialize a packet.
     pub fn init(alloc: std.mem.Allocator) Packet {
-        var p: Packet = .{};
-        p.alloc = alloc;
-        return p;
+        return .{
+            .alloc = alloc,
+        };
     }
 
     /// Initialize a packet with a given header.
     pub fn init_with_header(alloc: std.mem.Allocator, header: proto.Protocol) Packet {
-        var p: Packet = .{};
-        p.alloc = alloc;
+        var p: Packet = Packet.init(alloc);
         p.header = header;
         return p;
     }
@@ -53,7 +52,7 @@ pub const Packet = struct {
     }
 
     /// Get the topic name from the body.
-    pub fn get_topic_name(self: *Packet) Error![]const u8 {
+    pub fn get_topic_name(self: *const Packet) Error![]const u8 {
         if (self.body) |body| {
             if (body.len < self.header.topic_len) {
                 return Error.invalid_body_len;
@@ -64,7 +63,7 @@ pub const Packet = struct {
     }
 
     /// Get the payload from the body.
-    pub fn get_payload(self: *Packet) Error![]const u8 {
+    pub fn get_payload(self: *const Packet) Error![]const u8 {
         if (self.body) |body| {
             if (body.len < (self.header.topic_len + self.header.payload_len)) {
                 return Error.invalid_body_len;
@@ -78,6 +77,7 @@ pub const Packet = struct {
     pub fn deinit(self: *Packet) void {
         if (self.body) |body| {
             self.alloc.free(body);
+            self.body = null;
         }
     }
 };
@@ -92,18 +92,17 @@ pub const PacketCollection = struct {
     packets: std.ArrayList(Packet) = undefined,
 
     /// Init an empty packet collection.
-    pub fn init(alloc: std.mem.Allocator) !PacketCollection {
-        var pc: PacketCollection = .{};
-        pc.alloc = alloc;
+    pub fn init(alloc: std.mem.Allocator) PacketCollection {
+        var pc: PacketCollection = .{
+            .alloc = alloc,
+        };
         pc.packets = std.ArrayList(Packet).init(alloc);
         return pc;
     }
 
     /// Init with a given entry.
     pub fn init_with_entry(alloc: std.mem.Allocator, entry: Packet) !PacketCollection {
-        var pc: PacketCollection = .{};
-        pc.alloc = alloc;
-        pc.packets = std.ArrayList(Packet).init(alloc);
+        var pc: PacketCollection = PacketCollection.init(alloc);
         try pc.add(entry);
         return pc;
     }
@@ -124,7 +123,7 @@ pub const PacketCollection = struct {
     }
 
     /// Get the entire payload size of all packets.
-    pub fn payload_size(self: *PacketCollection) usize {
+    pub fn payload_size(self: *const PacketCollection) usize {
         var result: usize = 0;
         for (self.packets.items) |item| {
             result += item.header.payload_len;
