@@ -2,7 +2,7 @@ const std = @import("std");
 const proto = @import("protocol.zig");
 
 /// Packet specific errors.
-pub const Error = error {
+pub const Error = error{
     /// Invalid header length.
     invalid_header_len,
     /// Invalid body length. This can apply to both topic name and payload.
@@ -11,6 +11,10 @@ pub const Error = error {
     missing_topic_name,
     /// Missing Body.
     missing_body,
+
+    /// The topic of the packet being added to the Packet Collection does not match
+    /// the topic already assigned.
+    topic_mismatch,
 };
 
 /// Packet structure to store header and payload contents.
@@ -109,11 +113,14 @@ pub const PacketCollection = struct {
 
     /// Add the given entry to the collection, pulling out relevant information.
     pub fn add(self: *PacketCollection, entry: Packet) !void {
+        const topic = try entry.get_topic_name();
         // if it's the first message, pull out metadata.
         if (self.packets.items.len == 0) {
             self.version = entry.header.flags.version;
             self.channel = entry.header.info.channel;
-            self.topic = try entry.get_topic_name();
+            self.topic = topic;
+        } else if (!std.mem.eql(u8, self.topic, topic)) {
+            return Error.topic_mismatch;
         }
         // if it's the final message grab the opcode info.
         if (entry.header.flags.fin) {
@@ -137,5 +144,101 @@ pub const PacketCollection = struct {
             item.deinit();
         }
         self.packets.deinit();
+    }
+};
+
+pub const PacketManager = struct {
+    alloc: std.mem.Allocator,
+    collector: std.StringHashMap(std.AutoHashMap(std.c.fd_t, PacketCollection)),
+
+    pub fn init(alloc: std.mem.Allocator) PacketManager {
+        return .{
+            .alloc = alloc,
+            .collector = std.StringHashMap(
+                std.AutoHashMap(std.c.fd_t, PacketCollection),
+            ).init(alloc),
+        };
+    }
+
+    /// Store the incoming packet for a client.
+    /// If this packet is the final packet, the PacketCollection object is popped
+    /// from this structure.
+    /// If this packet is not the final packet, a null is returned
+    pub fn store_or_pop(self: *PacketManager, client: std.c.fd_t, entry: Packet) !?PacketCollection {
+        const topic = try entry.get_topic_name();
+        const mapping: ?*std.AutoHashMap(std.c.fd_t, PacketCollection) = self.collector.getPtr(topic);
+        var result: ?PacketCollection = null;
+        if (mapping) |cm| {
+            const collector: ?*PacketCollection = cm.getPtr(client);
+            if (collector) |col| {
+                // handle existing packet collection
+                result = try self.handle_packet_collection(cm, col, topic, client, entry);
+            } else {
+                // handling new packet collection
+                const pc = PacketCollection.init_with_entry(self.alloc, entry);
+                if (entry.header.flags.fin) {
+                    result = pc;
+                    // remove topic if it has no pending packet collectors
+                    if (cm.count() == 0) {
+                        if (!self.collector.remove(topic)) {
+                            std.debug.print("topic({s}) could not be removed", .{topic});
+                        }
+                    }
+                } else {
+                    try cm.put(client, pc);
+                }
+            }
+        } else {
+            result = try self.new_or_pop(topic, client, entry);
+        }
+        return result;
+    }
+
+    fn new_or_pop(self: *PacketManager, topic: []const u8, client: std.c.fd_t, entry: Packet) !?PacketCollection {
+        var result: ?PacketCollection = null;
+        const pc = PacketCollection.init_with_entry(self.alloc, entry);
+        if (entry.header.flags.fin) {
+            result = pc;
+        } else {
+            var map = std.AutoHashMap(std.c.fd_t, PacketCollection).init(self.alloc);
+            try map.put(client, pc);
+            try self.collector.put(topic, map);
+        }
+        return result;
+    }
+
+    fn handle_packet_collection(
+        self: *PacketManager,
+        cm: *std.AutoHashMap(std.c.fd_t, PacketCollection),
+        col: *PacketCollection,
+        topic: []const u8,
+        client: std.c.fd_t,
+        entry: Packet,
+    ) !?PacketCollection {
+        var result: ?PacketCollection = null;
+        col.add(entry) catch |err| {
+            if (err == Error.topic_mismatch) {
+                std.debug.print("received packet not associated with previous topic.\n", .{});
+                std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
+                col.deinit();
+                result = try self.new_or_pop(topic, client, entry);
+            } else {
+                return err;
+            }
+        };
+        if (entry.header.flags.fin) {
+            result = col.*;
+            // remove the client entry since the packet collector is finished
+            if (!cm.remove(client)) {
+                std.debug.print("client({d}) could not be removed", .{client});
+            }
+            // remove topic if it has no pending packet collectors
+            if (cm.count() == 0) {
+                if (!self.collector.remove(topic)) {
+                    std.debug.print("topic({s}) could not be removed", .{topic});
+                }
+            }
+        }
+        return result;
     }
 };

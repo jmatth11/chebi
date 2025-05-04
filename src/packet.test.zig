@@ -314,6 +314,46 @@ test "PacketCollection.add success -- two entries" {
     try std.testing.expectEqual(try entry1.get_topic_name(), pc.topic);
 }
 
+test "PacketCollection.add failed -- mismatch topics" {
+    var entry1 = packet.Packet.init(std.testing.allocator);
+    const buf: [2]u8 = [_]u8 {
+        0b00100000,
+        0b10000101,
+    };
+    entry1.peek_header(buf);
+    const topic = "test";
+    const payload = "hello, world!";
+    const body = "testhello, world!";
+    entry1.header.topic_len = topic.len;
+    entry1.header.payload_len = payload.len;
+    entry1.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry1.body.?, body);
+
+    var entry2 = packet.Packet.init(std.testing.allocator);
+    // need to deinit manually since it never gets added
+    defer entry2.deinit();
+    const buf2: [2]u8 = [_]u8 {
+        0b10100001,
+        0b10000101,
+    };
+    entry2.peek_header(buf2);
+    const topic2 = "nottest";
+    const body2 = "nottesthello, world!";
+    entry2.header.topic_len = topic2.len;
+    entry2.header.payload_len = payload.len;
+    entry2.body = try std.testing.allocator.alloc(u8, body2.len);
+    @memcpy(entry2.body.?, body2);
+    var pc = packet.PacketCollection.init(
+        std.testing.allocator,
+    );
+    defer pc.deinit();
+
+    try pc.add(entry1);
+
+    try std.testing.expectEqual(1, pc.packets.items.len);
+    try std.testing.expectError(packet.Error.topic_mismatch, pc.add(entry2));
+}
+
 test "PacketCollection.payload_size multiple entries" {
     var entry1 = packet.Packet.init(std.testing.allocator);
     const buf: [2]u8 = [_]u8 {

@@ -9,8 +9,8 @@ pub const Error = error {
     payload_len_invalid,
 };
 
-/// Read the next packet from the given socket.
-pub fn read_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet {
+/// Grab the next packet from the given socket
+pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet {
     // create a packet.
     var result: packet.Packet = packet.Packet.init(alloc);
     // peek header info
