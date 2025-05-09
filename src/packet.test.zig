@@ -425,3 +425,12 @@ test "PacketCollection.payload_size empty" {
     try std.testing.expectEqual(0, pc.packets.items.len);
     try std.testing.expectEqual(0, pc.payload_size());
 }
+
+// ------------ PacketManager ------------
+
+test "PacketManager.init sanity check" {
+    var pm = packet.PacketManager.init(std.testing.allocator);
+    defer pm.deinit();
+    try std.testing.expectEqual(std.testing.allocator, pm.alloc);
+    try std.testing.expectEqual(std.testing.allocator, pm.collector.allocator);
+}

@@ -241,4 +241,16 @@ pub const PacketManager = struct {
         }
         return result;
     }
+
+    pub fn deinit(self: *PacketManager) void{
+        var vi = self.collector.valueIterator();
+        while (vi.next()) |client_map| {
+            var cm_vi = client_map.valueIterator();
+            while (cm_vi.next()) |packet| {
+                packet.deinit();
+            }
+            client_map.deinit();
+        }
+        self.collector.deinit();
+    }
 };
