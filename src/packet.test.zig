@@ -434,3 +434,11 @@ test "PacketManager.init sanity check" {
     try std.testing.expectEqual(std.testing.allocator, pm.alloc);
     try std.testing.expectEqual(std.testing.allocator, pm.collector.allocator);
 }
+
+test "PacketManager.store_or_pop single packet" {
+    // TODO implement
+}
+
+test "PacketManager.store_or_pop multi packet" {
+    // TODO implement
+}
