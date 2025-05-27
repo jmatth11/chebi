@@ -435,10 +435,75 @@ test "PacketManager.init sanity check" {
     try std.testing.expectEqual(std.testing.allocator, pm.collector.allocator);
 }
 
-test "PacketManager.store_or_pop single packet" {
-    // TODO implement
+test "PacketManager.store_or_pop single packet with new topic" {
+    var pm = packet.PacketManager.init(std.testing.allocator);
+    defer pm.deinit();
+    const client: std.c.fd_t = 1;
+    var entry1 = packet.Packet.init(std.testing.allocator);
+    const buf: [2]u8 = [_]u8 {
+        0b10100001,
+        0b10000101,
+    };
+    entry1.peek_header(buf);
+    const topic = "test";
+    const payload = "hello, world!";
+    const body = "testhello, world!";
+    entry1.header.topic_len = topic.len;
+    entry1.header.payload_len = payload.len;
+    entry1.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry1.body.?, body);
+
+    var result = try pm.store_or_pop(client, entry1);
+    defer result.?.deinit();
+    if (result) |coll| {
+        try std.testing.expectEqual(1, coll.packets.items.len);
+        const result_payload = try coll.packets.items[0].get_payload();
+        try std.testing.expectEqualStrings(payload, result_payload);
+    }
 }
 
-test "PacketManager.store_or_pop multi packet" {
-    // TODO implement
+test "PacketManager.store_or_pop multi packet with new topic" {
+    var pm = packet.PacketManager.init(std.testing.allocator);
+    defer pm.deinit();
+    const client: std.c.fd_t = 1;
+    var entry1 = packet.Packet.init(std.testing.allocator);
+    const buf: [2]u8 = [_]u8 {
+        0b00100000,
+        0b10000101,
+    };
+    entry1.peek_header(buf);
+    const topic = "test";
+    const payload = "hello, world!";
+    const body = "testhello, world!";
+    entry1.header.topic_len = topic.len;
+    entry1.header.payload_len = payload.len;
+    entry1.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry1.body.?, body);
+
+    var entry2 = packet.Packet.init(std.testing.allocator);
+    const buf2: [2]u8 = [_]u8 {
+        0b10100001,
+        0b10000101,
+    };
+    entry2.peek_header(buf2);
+    entry2.header.topic_len = topic.len;
+    entry2.header.payload_len = payload.len;
+    entry2.body = try std.testing.allocator.alloc(u8, body.len);
+    @memcpy(entry2.body.?, body);
+
+    var result = try pm.store_or_pop(client, entry1);
+    try std.testing.expect(result == null);
+
+    result = try pm.store_or_pop(client, entry2);
+    try std.testing.expect(result != null);
+    defer result.?.deinit();
+
+    try std.testing.expectEqual(2, result.?.packets.items.len);
+
+    //if (result) |coll| {
+    //    for (coll.packets.items) |item| {
+    //        const result_payload = try item.get_payload();
+    //        try std.testing.expectEqualStrings(payload, result_payload);
+    //    }
+    //}
 }

@@ -173,7 +173,7 @@ pub const PacketManager = struct {
             if (collector) |col| {
                 // handle existing packet collection
                 result = try self.handle_packet_collection(cm, col, topic, client, entry);
-                if (result) {
+                if (result != null and cm.count() > 0) {
                     // remove client because it's packet collection is finished
                     if (!cm.remove(client)) {
                         std.debug.print("client({d}) could not be removed", .{client});
@@ -181,7 +181,7 @@ pub const PacketManager = struct {
                 }
             } else {
                 // handling new packet collection
-                const pc = PacketCollection.init_with_entry(self.alloc, entry);
+                const pc = try PacketCollection.init_with_entry(self.alloc, entry);
                 if (entry.header.flags.fin) {
                     result = pc;
                 } else {
@@ -203,7 +203,7 @@ pub const PacketManager = struct {
 
     fn new_or_pop(self: *PacketManager, topic: []const u8, client: std.c.fd_t, entry: Packet) !?PacketCollection {
         var result: ?PacketCollection = null;
-        const pc = PacketCollection.init_with_entry(self.alloc, entry);
+        const pc = try PacketCollection.init_with_entry(self.alloc, entry);
         if (entry.header.flags.fin) {
             result = pc;
         } else {
