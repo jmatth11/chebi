@@ -173,12 +173,6 @@ pub const PacketManager = struct {
             if (collector) |col| {
                 // handle existing packet collection
                 result = try self.handle_packet_collection(cm, col, topic, client, entry);
-                if (result != null and cm.count() > 0) {
-                    // remove client because it's packet collection is finished
-                    if (!cm.remove(client)) {
-                        std.debug.print("client({d}) could not be removed", .{client});
-                    }
-                }
             } else {
                 // handling new packet collection
                 const pc = try PacketCollection.init_with_entry(self.alloc, entry);
@@ -186,13 +180,6 @@ pub const PacketManager = struct {
                     result = pc;
                 } else {
                     try cm.put(client, pc);
-                }
-            }
-            // If mapping is empty, deinit and remove from collector
-            if (cm.count() == 0) {
-                cm.deinit();
-                if (!self.collector.remove(topic)) {
-                    std.debug.print("topic({s}) could not be removed", .{topic});
                 }
             }
         } else {
@@ -241,6 +228,7 @@ pub const PacketManager = struct {
             }
             // remove topic if it has no pending packet collectors
             if (cm.count() == 0) {
+                cm.deinit();
                 if (!self.collector.remove(topic)) {
                     std.debug.print("topic({s}) could not be removed", .{topic});
                 }

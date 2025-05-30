@@ -500,10 +500,10 @@ test "PacketManager.store_or_pop multi packet with new topic" {
 
     try std.testing.expectEqual(2, result.?.packets.items.len);
 
-    //if (result) |coll| {
-    //    for (coll.packets.items) |item| {
-    //        const result_payload = try item.get_payload();
-    //        try std.testing.expectEqualStrings(payload, result_payload);
-    //    }
-    //}
+    if (result) |coll| {
+        for (coll.packets.items) |item| {
+            const result_payload = try item.get_payload();
+            try std.testing.expectEqualStrings(payload, result_payload);
+        }
+    }
 }
