@@ -15,6 +15,9 @@ pub const Error = error{
     /// The topic of the packet being added to the Packet Collection does not match
     /// the topic already assigned.
     topic_mismatch,
+    /// The channel of the packet being added to the Packet Collection does not
+    /// match the channel already assigned.
+    channel_mismatch,
 };
 
 /// Packet structure to store header and payload contents.
@@ -114,13 +117,19 @@ pub const PacketCollection = struct {
     /// Add the given entry to the collection, pulling out relevant information.
     pub fn add(self: *PacketCollection, entry: Packet) !void {
         const topic = try entry.get_topic_name();
+        const channel: u8 = @intCast(entry.header.info.channel);
         // if it's the first message, pull out metadata.
         if (self.packets.items.len == 0) {
             self.version = entry.header.flags.version;
-            self.channel = entry.header.info.channel;
+            self.channel = channel;
             self.topic = topic;
-        } else if (!std.mem.eql(u8, self.topic, topic)) {
-            return Error.topic_mismatch;
+        } else {
+            if (!std.mem.eql(u8, self.topic, topic)) {
+                return Error.topic_mismatch;
+            }
+            if (self.channel != channel) {
+                return Error.channel_mismatch;
+            }
         }
         // if it's the final message grab the opcode info.
         if (entry.header.flags.fin) {
@@ -147,15 +156,83 @@ pub const PacketCollection = struct {
     }
 };
 
+pub const ChannelCollection = struct {
+    alloc: std.mem.Allocator,
+    channels: std.AutoHashMap(u7, PacketCollection),
+
+    pub fn init(alloc: std.mem.Allocator) ChannelCollection {
+        return .{
+            .alloc = alloc,
+            .channels = std.AutoHashMap(u7, PacketCollection).init(alloc),
+        };
+    }
+
+    /// Store the given Packet based on channel value.
+    /// If the PacketCollection is finished it is popped and returned, otherwise
+    /// null is returned.
+    pub fn store_or_pop(self: *ChannelCollection, entry: Packet) !?PacketCollection {
+        var result: ?PacketCollection = null;
+        const channel = entry.header.info.channel;
+        const mapping: ?*PacketCollection = self.channels.getPtr(channel);
+        if (mapping) |coll| {
+            coll.add(entry) catch |err| {
+                if (err == Error.topic_mismatch) {
+                    std.debug.print("received packet not associated with previous topic.\n", .{});
+                    std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
+                    coll.deinit();
+                    return try self.new_or_pop(channel, entry);
+                } else if (err == Error.channel_mismatch) {
+                    std.debug.print("received packet not associated with previous channel.\n", .{});
+                    std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
+                    coll.deinit();
+                    return try self.new_or_pop(channel, entry);
+                } else {
+                    return err;
+                }
+            };
+            if (entry.header.flags.fin) {
+                result = coll.*;
+                self.channels.remove(channel);
+            }
+        } else {
+            result = try self.new_or_pop(channel, entry);
+        }
+        return result;
+    }
+
+    fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
+        var result: ?PacketCollection = null;
+        const pc = try PacketCollection.init_with_entry(self.alloc, entry);
+        if (entry.header.flags.fin) {
+            result = pc;
+        } else {
+            try self.channels.put(channel, pc);
+        }
+        return result;
+    }
+
+    pub fn is_empty(self: *const ChannelCollection) bool {
+        return self.channels.count() == 0;
+    }
+
+    pub fn deinit(self: *ChannelCollection) void {
+        var vi = self.channels.valueIterator();
+        while (vi.next()) |chan| {
+            chan.deinit();
+        }
+        self.channels.deinit();
+    }
+};
+
 pub const PacketManager = struct {
     alloc: std.mem.Allocator,
-    collector: std.StringHashMap(std.AutoHashMap(std.c.fd_t, PacketCollection)),
+    collector: std.StringHashMap(std.AutoHashMap(std.c.fd_t, ChannelCollection)),
 
     pub fn init(alloc: std.mem.Allocator) PacketManager {
         return .{
             .alloc = alloc,
             .collector = std.StringHashMap(
-                std.AutoHashMap(std.c.fd_t, PacketCollection),
+                std.AutoHashMap(std.c.fd_t, ChannelCollection),
             ).init(alloc),
         };
     }
@@ -166,11 +243,12 @@ pub const PacketManager = struct {
     /// If this packet is not the final packet, a null is returned
     pub fn store_or_pop(self: *PacketManager, client: std.c.fd_t, entry: Packet) !?PacketCollection {
         const topic = try entry.get_topic_name();
-        const mapping: ?*std.AutoHashMap(std.c.fd_t, PacketCollection) = self.collector.getPtr(topic);
+        const mapping: ?*std.AutoHashMap(std.c.fd_t, ChannelCollection) = self.collector.getPtr(topic);
         var result: ?PacketCollection = null;
         if (mapping) |cm| {
-            const collector: ?*PacketCollection = cm.getPtr(client);
+            const collector: ?*ChannelCollection = cm.getPtr(client);
             if (collector) |col| {
+                result = try col.store_or_pop(entry);
                 // handle existing packet collection
                 result = try self.handle_packet_collection(cm, col, topic, client, entry);
             } else {
@@ -194,6 +272,7 @@ pub const PacketManager = struct {
         if (entry.header.flags.fin) {
             result = pc;
         } else {
+            // TODO this will need to change to accomodate ChannelCollection
             var map = std.AutoHashMap(std.c.fd_t, PacketCollection).init(self.alloc);
             try map.put(client, pc);
             try self.collector.put(topic, map);
@@ -203,25 +282,16 @@ pub const PacketManager = struct {
 
     fn handle_packet_collection(
         self: *PacketManager,
-        cm: *std.AutoHashMap(std.c.fd_t, PacketCollection),
-        col: *PacketCollection,
+        cm: *std.AutoHashMap(std.c.fd_t, ChannelCollection),
+        col: *ChannelCollection,
         topic: []const u8,
         client: std.c.fd_t,
         entry: Packet,
     ) !?PacketCollection {
         var result: ?PacketCollection = null;
-        col.add(entry) catch |err| {
-            if (err == Error.topic_mismatch) {
-                std.debug.print("received packet not associated with previous topic.\n", .{});
-                std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
-                col.deinit();
-                result = try self.new_or_pop(topic, client, entry);
-            } else {
-                return err;
-            }
-        };
+        result = try col.store_or_pop(entry);
         if (entry.header.flags.fin) {
-            result = col.*;
+            // TODO this will need to change to accomodate ChannelCollection
             // remove the client entry since the packet collector is finished
             if (!cm.remove(client)) {
                 std.debug.print("client({d}) could not be removed", .{client});
@@ -238,6 +308,7 @@ pub const PacketManager = struct {
     }
 
     pub fn deinit(self: *PacketManager) void{
+        // TODO this will need to change to accomodate ChannelCollection
         var vi = self.collector.valueIterator();
         while (vi.next()) |client_map| {
             var cm_vi = client_map.valueIterator();
