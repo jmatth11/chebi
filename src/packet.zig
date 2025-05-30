@@ -192,7 +192,9 @@ pub const ChannelCollection = struct {
             };
             if (entry.header.flags.fin) {
                 result = coll.*;
-                self.channels.remove(channel);
+                if (!self.channels.remove(channel)) {
+                    std.debug.print("channel({d}) could not be removed.", .{channel});
+                }
             }
         } else {
             result = try self.new_or_pop(channel, entry);
@@ -200,7 +202,7 @@ pub const ChannelCollection = struct {
         return result;
     }
 
-    fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
+    pub fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
         var result: ?PacketCollection = null;
         const pc = try PacketCollection.init_with_entry(self.alloc, entry);
         if (entry.header.flags.fin) {
@@ -248,16 +250,16 @@ pub const PacketManager = struct {
         if (mapping) |cm| {
             const collector: ?*ChannelCollection = cm.getPtr(client);
             if (collector) |col| {
-                result = try col.store_or_pop(entry);
-                // handle existing packet collection
                 result = try self.handle_packet_collection(cm, col, topic, client, entry);
             } else {
                 // handling new packet collection
-                const pc = try PacketCollection.init_with_entry(self.alloc, entry);
                 if (entry.header.flags.fin) {
+                    const pc = try PacketCollection.init_with_entry(self.alloc, entry);
                     result = pc;
                 } else {
-                    try cm.put(client, pc);
+                    var chan = ChannelCollection.init(self.alloc);
+                    _ = try chan.store_or_pop(entry);
+                    try cm.put(client, chan);
                 }
             }
         } else {
@@ -268,13 +270,14 @@ pub const PacketManager = struct {
 
     fn new_or_pop(self: *PacketManager, topic: []const u8, client: std.c.fd_t, entry: Packet) !?PacketCollection {
         var result: ?PacketCollection = null;
-        const pc = try PacketCollection.init_with_entry(self.alloc, entry);
         if (entry.header.flags.fin) {
+            const pc = try PacketCollection.init_with_entry(self.alloc, entry);
             result = pc;
         } else {
-            // TODO this will need to change to accomodate ChannelCollection
-            var map = std.AutoHashMap(std.c.fd_t, PacketCollection).init(self.alloc);
-            try map.put(client, pc);
+            var map = std.AutoHashMap(std.c.fd_t, ChannelCollection).init(self.alloc);
+            var chan = ChannelCollection.init(self.alloc);
+            _ = try chan.store_or_pop(entry);
+            try map.put(client, chan);
             try self.collector.put(topic, map);
         }
         return result;
@@ -291,10 +294,12 @@ pub const PacketManager = struct {
         var result: ?PacketCollection = null;
         result = try col.store_or_pop(entry);
         if (entry.header.flags.fin) {
-            // TODO this will need to change to accomodate ChannelCollection
-            // remove the client entry since the packet collector is finished
-            if (!cm.remove(client)) {
-                std.debug.print("client({d}) could not be removed", .{client});
+            if (col.is_empty()) {
+                col.deinit();
+                // remove the client entry since the packet collector is finished
+                if (!cm.remove(client)) {
+                    std.debug.print("client({d}) could not be removed", .{client});
+                }
             }
             // remove topic if it has no pending packet collectors
             if (cm.count() == 0) {
@@ -308,12 +313,11 @@ pub const PacketManager = struct {
     }
 
     pub fn deinit(self: *PacketManager) void{
-        // TODO this will need to change to accomodate ChannelCollection
         var vi = self.collector.valueIterator();
         while (vi.next()) |client_map| {
             var cm_vi = client_map.valueIterator();
-            while (cm_vi.next()) |packet| {
-                packet.deinit();
+            while (cm_vi.next()) |chan_collector| {
+                chan_collector.deinit();
             }
             client_map.deinit();
         }
