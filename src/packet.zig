@@ -202,7 +202,7 @@ pub const ChannelCollection = struct {
         return result;
     }
 
-    pub fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
+    fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
         var result: ?PacketCollection = null;
         const pc = try PacketCollection.init_with_entry(self.alloc, entry);
         if (entry.header.flags.fin) {
@@ -213,6 +213,7 @@ pub const ChannelCollection = struct {
         return result;
     }
 
+    /// Returns if the Channel Collection is empty or not.
     pub fn is_empty(self: *const ChannelCollection) bool {
         return self.channels.count() == 0;
     }
