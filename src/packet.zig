@@ -180,11 +180,17 @@ pub const ChannelCollection = struct {
                     std.debug.print("received packet not associated with previous topic.\n", .{});
                     std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
                     coll.deinit();
+                    if (!self.channels.remove(channel)) {
+                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                    }
                     return try self.new_or_pop(channel, entry);
                 } else if (err == Error.channel_mismatch) {
                     std.debug.print("received packet not associated with previous channel.\n", .{});
                     std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
                     coll.deinit();
+                    if (!self.channels.remove(channel)) {
+                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                    }
                     return try self.new_or_pop(channel, entry);
                 } else {
                     return err;
