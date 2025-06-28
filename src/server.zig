@@ -12,4 +12,8 @@ pub const Server = struct {
         };
         return result;
     }
+
+    pub fn listen(self: *Server) !void {
+        // TODO
+    }
 };
