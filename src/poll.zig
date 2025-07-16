@@ -16,7 +16,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
         const Self = @This();
 
         /// Initialize Poll structure with the max amount of events to handle at a time.
-        pub fn init() !Self {
+        pub fn init() Error!Self {
             const result: Self = .{
                 .fd = std.c.epoll_create1(0),
                 .events = undefined,
@@ -45,7 +45,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
                 .data = .{
                     .fd = listener,
                 },
-                .events = EPOLL.IN,
+                .events = EPOLL.IN | EPOLL.OUT | EPOLL.ET,
             };
             try self.add_event(&event);
         }
@@ -56,7 +56,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
                 .data = .{
                     .fd = conn,
                 },
-                .events = EPOLL.IN | EPOLL.ET,
+                .events = EPOLL.IN | EPOLL.ET | EPOLL.RDHUP | EPOLL.HUP,
             };
             try self.add_event(&event);
         }
