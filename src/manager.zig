@@ -6,6 +6,11 @@ pub const Error = error {
     topic_dne,
 };
 
+pub const ClientInfo = struct {
+    fd: std.c.fd_t,
+    last_active: std.time.Instant,
+};
+
 /// Manager to handle topics and clients.
 pub const Manager = struct {
     alloc: std.mem.Allocator,
@@ -17,6 +22,7 @@ pub const Manager = struct {
         const m: Manager = .{
             .alloc = alloc,
             .topics = std.StringHashMap(std.ArrayList(std.c.fd_t)).init(alloc),
+            // TODO replace Value with ClientInfo
             .clients = std.AutoHashMap(std.c.fd_t, std.ArrayList([]const u8)).init(alloc),
         };
         return m;
