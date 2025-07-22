@@ -160,9 +160,11 @@ pub const Server = struct {
                 },
                 protocol.OpCode.c_pong => {
                     std.debug.print("pong received: {}\n", .{fd});
-                    // TODO implement timestamp to update
+                    try self.manager.update_client_timestamp(fd);
                 },
-                protocol.OpCode.nc_continue => {},
+                protocol.OpCode.nc_continue => {
+                    // TODO send to handler
+                },
                 protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
                     release_packet = true;
                 },

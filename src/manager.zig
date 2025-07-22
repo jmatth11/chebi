@@ -1,29 +1,45 @@
 const std = @import("std");
 
 /// Errors specific to the manager.
-pub const Error = error {
+pub const Error = error{
     /// Topic does not exist
     topic_dne,
+    /// Client does not exist.
+    client_dne,
 };
 
 pub const ClientInfo = struct {
+    alloc: std.mem.Allocator,
     fd: std.c.fd_t,
     last_active: std.time.Instant,
+    topics: std.ArrayList([]const u8),
+
+    pub fn init(alloc: std.mem.Allocator, fd: std.c.fd_t) !ClientInfo {
+        return .{
+            .alloc = alloc,
+            .fd = fd,
+            .last_active = std.time.Instant.now(),
+            .topics = std.ArrayList([]const u8).init(alloc),
+        };
+    }
+
+    pub fn deinit(self: *ClientInfo) void {
+        self.topics.deinit();
+    }
 };
 
 /// Manager to handle topics and clients.
 pub const Manager = struct {
     alloc: std.mem.Allocator,
     topics: std.StringHashMap(std.ArrayList(std.c.fd_t)),
-    clients: std.AutoHashMap(std.c.fd_t, std.ArrayList([]const u8)),
+    clients: std.AutoHashMap(std.c.fd_t, ClientInfo),
 
     /// Initialize the manager with an allocator.
     pub fn init(alloc: std.mem.Allocator) Manager {
         const m: Manager = .{
             .alloc = alloc,
             .topics = std.StringHashMap(std.ArrayList(std.c.fd_t)).init(alloc),
-            // TODO replace Value with ClientInfo
-            .clients = std.AutoHashMap(std.c.fd_t, std.ArrayList([]const u8)).init(alloc),
+            .clients = std.AutoHashMap(std.c.fd_t, ClientInfo).init(alloc),
         };
         return m;
     }
@@ -43,7 +59,10 @@ pub const Manager = struct {
         if (self.clients.contains(client)) {
             return;
         }
-        try self.clients.put(client, std.ArrayList([]const u8).init(self.alloc));
+        try self.clients.put(
+            client,
+            try ClientInfo.init(self.alloc, client),
+        );
     }
 
     /// Subscribe a client to a specified topic.
@@ -58,9 +77,9 @@ pub const Manager = struct {
         // iterate through the client's list because I assume it will be smaller
         // than a topic's list. (unless we decide to sort the topic's list then
         // we can do binary search)
-        var client_topics = self.clients.getPtr(client).?;
+        var client_info: *ClientInfo = self.clients.getPtr(client).?;
         var already_subbed: bool = false;
-        for (client_topics.items) |item| {
+        for (client_info.topics.items) |item| {
             if (std.mem.eql(u8, item, topic)) {
                 already_subbed = true;
             }
@@ -69,7 +88,7 @@ pub const Manager = struct {
             return;
         }
         const topic_name: []const u8 = self.topics.getKey(topic).?;
-        try client_topics.append(topic_name);
+        try client_info.topics.append(topic_name);
         var topic_mapping: std.ArrayList(std.c.fd_t) = try self.topics.getPtr(topic).?;
         try topic_mapping.append(client);
     }
@@ -78,11 +97,11 @@ pub const Manager = struct {
     pub fn unsubscribe(self: *Manager, client: std.c.fd_t, topic: []const u8) void {
         // TODO iterating through seems slow, maybe we can sort beforehand
         // to do binary search? or maybe something else
-        const client_topics = self.clients.getPtr(client);
-        if (client_topics) |ct| {
+        const client_info: ?*ClientInfo = self.clients.getPtr(client);
+        if (client_info) |ct| {
             var idx: usize = 0;
             var found: bool = false;
-            for (ct.items, 0..) |item, i| {
+            for (ct.topics.items, 0..) |item, i| {
                 if (std.mem.eql(u8, item, topic)) {
                     found = true;
                     idx = i;
@@ -113,10 +132,10 @@ pub const Manager = struct {
     /// Unsubscribe the client from all topics.
     /// This function also removes the client from the managed list.
     pub fn unsubscribe_all(self: *Manager, client: std.c.fd_t) void {
-        const client_topics = self.clients.getPtr(client);
-        if (client_topics) |ct| {
-            for (ct.items) |item| {
-                var topic_mapping = self.topics.getPtr(item).?;
+        const client_info: ?*ClientInfo = self.clients.getPtr(client);
+        if (client_info) |ct| {
+            for (ct.topics.items) |item| {
+                var topic_mapping: *std.ArrayList(std.c.fd_t) = self.topics.getPtr(item).?;
                 var idx: usize = 0;
                 var found: bool = false;
                 for (topic_mapping.items, 0..) |tm_item, i| {
@@ -137,11 +156,20 @@ pub const Manager = struct {
 
     /// Grab the list of clients for a specific topic.
     pub fn client_list(self: *Manager, topic: []const u8) Error![]const std.c.fd_t {
-        const topic_mapping = self.topics.get(topic);
+        const topic_mapping: ?std.ArrayList(std.c.fd_t) = self.topics.get(topic);
         if (topic_mapping) |tm| {
             return tm.items;
         }
         return Error.topic_dne;
+    }
+
+    /// Update the timestamp for a client.
+    pub fn update_client_timestamp(self: *Manager, client: std.c.fd_t) !void {
+        const client_option: ?*ClientInfo = self.clients.getPtr(client);
+        if (client_option) |ct| {
+            ct.last_active = std.time.Instant.now();
+        }
+        return Error.client_dne;
     }
 
     /// Deinitalize internals of the Manager.
