@@ -3,6 +3,7 @@ const manager = @import("manager.zig");
 const poll = @import("poll.zig");
 const reader = @import("reader.zig");
 const protocol = @import("protocol.zig");
+const packet = @import("packet.zig");
 const EPOLL = std.os.linux.EPOLL;
 
 const poll_ctx = poll.Poll(100);
@@ -17,6 +18,7 @@ pub const Error = error{
 pub const Server = struct {
     alloc: std.mem.Allocator,
     manager: manager.Manager,
+    packetManager: packet.PacketManager,
     poll: poll_ctx,
     listener: std.c.fd_t,
     srv_addr: std.net.Address,
@@ -27,6 +29,7 @@ pub const Server = struct {
         const result: Server = .{
             .alloc = alloc,
             .manager = manager.Manager.init(alloc),
+            .packetManager = packet.PacketManager.init(alloc),
             .poll = try poll_ctx.init(),
             .srv_addr = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, port),
             .listener = std.c.socket(
@@ -60,6 +63,12 @@ pub const Server = struct {
             return Error.listener_set_nonblock;
         }
         return result;
+    }
+
+    pub fn deinit(self: *Server) void {
+        self.packetManager.deinit();
+        self.manager.deinit();
+        // TODO probably need to handle closing all connections and epoll
     }
 
     pub fn stop(self: *Server) void {
@@ -129,19 +138,19 @@ pub const Server = struct {
     fn event(self: *Server, fd: std.c.fd_t) !void {
         var read_running = true;
         while (read_running) {
-            const packet = reader.next_packet(self.alloc, fd) catch |err| {
+            const packet_entry = reader.next_packet(self.alloc, fd) catch |err| {
                 read_running = false;
                 if (err == reader.Error.errno) {
                     std.debug.print("errno: {}\n", .{std.posix.errno()});
                 } else if (err == reader.Error.would_block) {
-                    std.debug.print("packet error: {}\n", .{err});
+                    std.debug.print("packet_entry error: {}\n", .{err});
                 }
             };
-            errdefer packet.deinit();
-            var release_packet = true;
-            switch (packet.header.flags.opcode) {
+            errdefer packet_entry.deinit();
+            var release_packet_entry = true;
+            switch (packet_entry.header.flags.opcode) {
                 protocol.OpCode.c_subscribe => {
-                    const topic = try packet.get_topic_name();
+                    const topic = try packet_entry.get_topic_name();
                     std.debug.print("subscribe {} from {}.\n", .{fd, topic});
                     try self.manager.subscribe(
                         fd,
@@ -149,7 +158,7 @@ pub const Server = struct {
                     );
                 },
                 protocol.OpCode.c_unsubscribe => {
-                    const topic = try packet.get_topic_name();
+                    const topic = try packet_entry.get_topic_name();
                     std.debug.print("unsubscribe {} from {}.\n", .{fd, topic});
                     self.manager.unsubscribe(
                         fd,
@@ -166,18 +175,15 @@ pub const Server = struct {
                     std.debug.print("pong received: {}\n", .{fd});
                     try self.manager.update_client_timestamp(fd);
                 },
-                protocol.OpCode.nc_continue => {
-                    // TODO send to handler
-                },
-                protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
-                    release_packet = true;
+                protocol.OpCode.nc_continue, protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
+                    release_packet_entry = false;
                 },
                 else => {
-                    std.debug.print("unsupported opcode: {}\n", .{packet.header.flags.opcode});
+                    std.debug.print("unsupported opcode: {}\n", .{packet_entry.header.flags.opcode});
                 },
             }
-            if (release_packet) {
-                packet.deinit();
+            if (release_packet_entry) {
+                packet_entry.deinit();
             }
         }
     }

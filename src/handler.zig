@@ -3,27 +3,40 @@ const packet = @import("packet.zig");
 const writer = @import("write.zig");
 
 /// Errors with the packet handler.
-pub const Error = error {
+pub const Error = error{
     /// This is issued if a would_block occurs.
     try_again,
 };
 
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
-    collection: packet.PacketCollection,
+    collection: std.ArrayList(packet.PacketCollection),
+    mutex: std.Thread.Mutex,
+    pool: std.Thread.Pool,
+    thread_count: usize,
 
     pub fn init(alloc: std.mem.Allocator) PacketHandler {
+        const thread_count: usize = (try std.Thread.getCpuCount()) * 2;
+        const options: std.Thread.Pool.Options = .{
+            .allocator = alloc,
+            .n_jobs = thread_count,
+        };
         return .{
             .alloc = alloc,
-            .collection = packet.PacketCollection.init(alloc),
+            .collection = std.ArrayList(packet.PacketCollection).init(alloc),
+            .pool = std.Thread.Pool.init(options),
+            .mutex = .{},
+            .thread_count = thread_count,
         };
     }
 
-    pub fn add(self: *PacketHandler, payload: packet.Packet) !void {
-        // TODO figure out best way to handle this.
-        // need a callback function to allow this to signal a packet being ready
-        // for either the server or the client.
+    pub fn push(self: *PacketHandler, entry: packet.PacketCollection) !void {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        try self.collection.insert(0, entry);
     }
+
+
 
     /// Send the packet to the given socket.
     pub fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
@@ -36,6 +49,11 @@ pub const PacketHandler = struct {
     }
 
     pub fn deinit(self: *PacketHandler) void {
+        if (self.collection.items.len > 0) {
+            for (self.collection.items) |item| {
+                item.deinit();
+            }
+        }
         self.collection.deinit();
     }
 };
