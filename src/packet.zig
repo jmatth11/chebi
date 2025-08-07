@@ -7,6 +7,8 @@ pub const Error = error{
     invalid_header_len,
     /// Invalid body length. This can apply to both topic name and payload.
     invalid_body_len,
+    /// Invalid buffer length given from the user.
+    invalid_buffer_len,
     /// Missing topic name for packet.
     missing_topic_name,
     /// Missing Body.
@@ -24,6 +26,8 @@ pub const Error = error{
 pub const Packet = struct {
     alloc: std.mem.Allocator,
     header: proto.Protocol = .{},
+    // TODO maybe rework this to allow the body to hold the header info too
+    // this way we won't have to realloc a new body on write to socket.
     body: ?[]u8 = null,
 
     /// Initialize a packet.
@@ -78,6 +82,25 @@ pub const Packet = struct {
             return body[self.header.topic_len..];
         }
         return Error.missing_body;
+    }
+
+    /// Get the packet's full size.
+    pub fn get_packet_size(self: *const Packet) usize {
+        if (self.body) |body| {
+            return self.header.header_size() + body.len;
+        }
+        return self.header.header_size();
+    }
+
+    /// Write the packet out to the given buffer.
+    pub fn write(self: *const Packet, buf: []u8) !void {
+        if (buf.len < self.get_packet_size()) {
+            return Error.invalid_buffer_len;
+        }
+        const offset: usize = try self.header.write(buf);
+        if (self.body) |body| {
+            @memcpy(buf[offset..], body);
+        }
     }
 
     /// Deinitialize internals.

@@ -1,9 +1,11 @@
 const std = @import("std");
 
 /// Errors related to Protocols
-pub const Errors = error {
+pub const Errors = error{
     invalid_topic_len,
     invalid_payload_len,
+
+    header_len_invalid,
 
     not_supported_type,
 };
@@ -107,7 +109,7 @@ pub const Protocol = struct {
         }
         self.topic_len = std.mem.readVarInt(
             u16,
-            buf[offset..(offset+2)],
+            buf[offset..(offset + 2)],
             .little,
         );
         offset += 2;
@@ -116,11 +118,32 @@ pub const Protocol = struct {
         }
         self.payload_len = std.mem.readVarInt(
             u16,
-            buf[offset..(offset+2)],
+            buf[offset..(offset + 2)],
             .little,
         );
         offset += 2;
         return offset;
     }
-};
 
+    /// Write the protocol to the given buffer.
+    pub fn write(self: *Protocol, buf: []u8) Errors!usize {
+        if (buf.len < self.header_size()) {
+            return Errors.header_len_invalid;
+        }
+        buf[0] = self.flags.pack();
+        buf[1] = self.info.pack();
+        std.mem.writeInt(
+            u16,
+            buf[2..4],
+            self.topic_len,
+            .little,
+        );
+        std.mem.writeInt(
+            u16,
+            buf[4..6],
+            self.payload_len,
+            .little,
+        );
+        return self.header_size();
+    }
+};

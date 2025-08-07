@@ -141,15 +141,19 @@ pub const Server = struct {
             var release_packet = true;
             switch (packet.header.flags.opcode) {
                 protocol.OpCode.c_subscribe => {
+                    const topic = try packet.get_topic_name();
+                    std.debug.print("subscribe {} from {}.\n", .{fd, topic});
                     try self.manager.subscribe(
                         fd,
-                        try packet.get_topic_name(),
+                        topic,
                     );
                 },
                 protocol.OpCode.c_unsubscribe => {
+                    const topic = try packet.get_topic_name();
+                    std.debug.print("unsubscribe {} from {}.\n", .{fd, topic});
                     self.manager.unsubscribe(
                         fd,
-                        try packet.get_topic_name(),
+                        topic,
                     );
                 },
                 protocol.OpCode.c_close => {
