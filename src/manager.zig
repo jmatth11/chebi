@@ -8,6 +8,8 @@ pub const Error = error{
     client_dne,
 };
 
+pub const TopicMapping = std.StringHashMap(std.ArrayList(std.c.fd_t));
+
 pub const ClientInfo = struct {
     alloc: std.mem.Allocator,
     fd: std.c.fd_t,
@@ -31,14 +33,14 @@ pub const ClientInfo = struct {
 /// Manager to handle topics and clients.
 pub const Manager = struct {
     alloc: std.mem.Allocator,
-    topics: std.StringHashMap(std.ArrayList(std.c.fd_t)),
+    topics: TopicMapping,
     clients: std.AutoHashMap(std.c.fd_t, ClientInfo),
 
     /// Initialize the manager with an allocator.
     pub fn init(alloc: std.mem.Allocator) Manager {
         const m: Manager = .{
             .alloc = alloc,
-            .topics = std.StringHashMap(std.ArrayList(std.c.fd_t)).init(alloc),
+            .topics = TopicMapping.init(alloc),
             .clients = std.AutoHashMap(std.c.fd_t, ClientInfo).init(alloc),
         };
         return m;

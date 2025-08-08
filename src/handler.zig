@@ -1,6 +1,7 @@
 const std = @import("std");
 const packet = @import("packet.zig");
 const writer = @import("write.zig");
+const manager = @import("manager.zig");
 
 /// Errors with the packet handler.
 pub const Error = error{
@@ -31,15 +32,36 @@ pub const PacketHandler = struct {
     }
 
     pub fn push(self: *PacketHandler, entry: packet.PacketCollection) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
-        try self.collection.insert(0, entry);
+        // TODO this approach was when it's parallelized
+        // we also insert at the beginning to treat it like a Queue.
+        // But this approach might change
+        //self.mutex.lock();
+        //defer self.mutex.unlock();
+        //try self.collection.insert(0, entry);
+        try self.collection.append(entry);
     }
 
-
+    pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
+        // TODO this is MVP approach, revisit to parallelize
+        for (self.collection.items) |collection| {
+            const topic = collection.topic;
+            const clients_opt: ?std.ArrayList(std.c.fd_t) = mapping.get(topic);
+            if (clients_opt) |clients| {
+                for (collection.packets.items) |payload| {
+                    for (clients.items) |socket| {
+                        try self.send(socket, payload);
+                    }
+                }
+            }
+            // free collection once done
+            collection.deinit();
+        }
+        // reset collection after processing
+        self.collection.resize(0);
+    }
 
     /// Send the packet to the given socket.
-    pub fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
+    fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
         writer.write_packet(self.alloc, socket, payload) catch |err| {
             if (err == writer.Error.would_block) {
                 return Error.try_again;

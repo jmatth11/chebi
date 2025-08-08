@@ -4,6 +4,7 @@ const poll = @import("poll.zig");
 const reader = @import("reader.zig");
 const protocol = @import("protocol.zig");
 const packet = @import("packet.zig");
+const handler = @import("handler.zig");
 const EPOLL = std.os.linux.EPOLL;
 
 const poll_ctx = poll.Poll(100);
@@ -19,6 +20,7 @@ pub const Server = struct {
     alloc: std.mem.Allocator,
     manager: manager.Manager,
     packetManager: packet.PacketManager,
+    packetHandler: handler.PacketHandler,
     poll: poll_ctx,
     listener: std.c.fd_t,
     srv_addr: std.net.Address,
@@ -30,6 +32,7 @@ pub const Server = struct {
             .alloc = alloc,
             .manager = manager.Manager.init(alloc),
             .packetManager = packet.PacketManager.init(alloc),
+            .packetHandler = handler.PacketHandler.init(alloc),
             .poll = try poll_ctx.init(),
             .srv_addr = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, port),
             .listener = std.c.socket(
@@ -166,10 +169,7 @@ pub const Server = struct {
                     );
                 },
                 protocol.OpCode.c_close => {
-                    self.manager.unsubscribe_all(fd);
-                    std.debug.print("closing connection for {}.\n", .{fd});
-                    self.poll.delete(fd);
-                    std.c.close(fd);
+                    self.remove(fd);
                 },
                 protocol.OpCode.c_pong => {
                     std.debug.print("pong received: {}\n", .{fd});
@@ -177,6 +177,10 @@ pub const Server = struct {
                 },
                 protocol.OpCode.nc_continue, protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
                     release_packet_entry = false;
+                    const ready_packet = try self.packetManager.store_or_pop(fd, packet_entry);
+                    if (ready_packet) |p| {
+                        try self.packetHandler.push(p);
+                    }
                 },
                 else => {
                     std.debug.print("unsupported opcode: {}\n", .{packet_entry.header.flags.opcode});
@@ -186,5 +190,6 @@ pub const Server = struct {
                 packet_entry.deinit();
             }
         }
+        try self.packetHandler.process(self.manager.topics);
     }
 };

@@ -34,11 +34,9 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
     if (recv_len < 6) {
         return Error.invalid_header;
     }
-    // calculate the body size and read it in.
-    const body_size: usize = result.header.topic_len + result.header.payload_len;
-    result.body = try alloc.alloc(u8, body_size);
-    recv_len = std.c.recv(socket, result.body.?.ptr, body_size, 0);
-    if (recv_len < body_size) {
+    try result.alloc_buffer();
+    recv_len = std.c.recv(socket, result.body.?.ptr, result.body.?.len, 0);
+    if (recv_len < result.body.?.len) {
         return Error.payload_len_invalid;
     }
     return result;

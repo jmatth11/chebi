@@ -44,6 +44,14 @@ pub const Packet = struct {
         return p;
     }
 
+    pub fn alloc_buffer(self: *Packet) !void {
+        if (self.body) |body| {
+            self.alloc.free(body);
+        }
+        const body_size: usize = self.header.topic_len + self.header.payload_len;
+        self.body = try self.alloc.alloc(u8, body_size);
+    }
+
     /// Peek header information.
     pub fn peek_header(self: *Packet, buf: [2]u8) void {
         self.header.parse_flags(buf[0]);
@@ -92,12 +100,73 @@ pub const Packet = struct {
         return self.header.header_size();
     }
 
+    pub fn set_body(self: *Packet, topic_name: []const u8, payload: []const u8) !usize {
+        if (self.body) |body| {
+            self.alloc.free(body);
+        }
+        self.body = self.alloc.alloc(u8, topic_name.len + payload.len);
+        if (self.body) |body| {
+            std.mem.copyForwards(body, topic_name);
+            self.header.topic_len = topic_name.len;
+            std.mem.copyForwards(body[topic_name.len..], payload);
+            self.header.payload_len = payload.len;
+        }
+        return self.body.?.len;
+    }
+
+    pub fn set_topic(self: *Packet, topic_name: []const u8) !usize {
+        if (self.body == null) {
+            self.body = try self.alloc.alloc(u8, topic_name.len);
+            self.header.topic_len = topic_name.len;
+        }
+        if (topic_name.len == self.header.topic_len) {
+            std.mem.copyForwards(u8, self.body.?, topic_name);
+        } else {
+            const new_body = try self.alloc.alloc(
+                u8,
+                topic_name.len + self.header.payload_len,
+            );
+            std.mem.copyForwards(u8, new_body, topic_name);
+            std.mem.copyForwards(
+                u8,
+                new_body[topic_name..],
+                self.body.?[self.header.topic_len..],
+            );
+            self.header.topic_len = topic_name.len;
+            self.alloc.free(self.body.?);
+            self.body = new_body;
+        }
+        return self.body.?.len;
+    }
+
+    pub fn set_payload(self: *Packet, payload: []const u8) !usize {
+        if (self.body == null) {
+            self.body = try self.alloc.alloc(u8, payload.len);
+            self.header.payload_len = payload.len;
+        }
+        if (self.header.payload_len == payload.len) {
+            std.mem.copyForwards(u8, self.body.?[self.header.topic_len..], payload);
+        } else {
+            const new_body = try self.alloc.resize(
+                self.body.?,
+                self.header.topic_len + payload.len,
+            );
+            std.mem.copyForwards(u8, new_body[self.header.topic_len..], payload);
+            self.header.payload_len = payload.len;
+            self.body = new_body;
+        }
+        return self.body.?.len;
+    }
+
     /// Write the packet out to the given buffer.
     pub fn write(self: *const Packet, buf: []u8) !void {
         if (buf.len < self.get_packet_size()) {
             return Error.invalid_buffer_len;
         }
         const offset: usize = try self.header.write(buf);
+        if (self.body.?.len == 0) {
+            return;
+        }
         if (self.body) |body| {
             @memcpy(buf[offset..], body);
         }
@@ -342,7 +411,7 @@ pub const PacketManager = struct {
         return result;
     }
 
-    pub fn deinit(self: *PacketManager) void{
+    pub fn deinit(self: *PacketManager) void {
         var vi = self.collector.valueIterator();
         while (vi.next()) |client_map| {
             var cm_vi = client_map.valueIterator();
