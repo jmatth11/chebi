@@ -41,13 +41,13 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(lib);
 
-    create_exe(b, target, optimize, "src/examples/server.zig", "server", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "src/examples/simple/server.zig", "server", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/pub.zig", "pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"src/examples/simple/pub.zig", "pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/sub.zig", "sub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"src/examples/simple/sub.zig", "sub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
 
