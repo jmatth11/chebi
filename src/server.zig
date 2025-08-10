@@ -65,6 +65,7 @@ pub const Server = struct {
             result.errno = std.posix.errno(-1);
             return Error.listener_set_nonblock;
         }
+        try result.poll.add_listener(result.listener);
         return result;
     }
 
@@ -133,7 +134,10 @@ pub const Server = struct {
         self.manager.unsubscribe_all(fd);
         std.debug.print("closing connection for {any}.\n", .{fd});
         self.poll.delete(fd) catch {
-            std.debug.print("poll delete failed with errno: {any}\n", .{std.posix.errno(-1)});
+            const errno = std.posix.errno(-1);
+            if (errno != std.c.E.BADF) {
+                std.debug.print("poll delete failed with errno: {any}\n", .{errno});
+            }
         };
         _ = std.c.close(fd);
     }
@@ -147,9 +151,12 @@ pub const Server = struct {
             } else |err| {
                 read_running = false;
                 if (err == reader.Error.errno) {
-                    std.debug.print("errno: {any}\n", .{std.posix.errno(-1)});
-                } else if (err == reader.Error.would_block) {
-                    std.debug.print("packet_entry error: {any}\n", .{err});
+                    const errno = std.posix.errno(-1);
+                    if (errno == std.c.E.BADF) {
+                        std.debug.print("file descriptor bad or closed abruptly: {}\n", .{fd});
+                    } else {
+                        std.debug.print("errno: {any}\n", .{errno});
+                    }
                 }
                 continue;
             }
@@ -158,7 +165,6 @@ pub const Server = struct {
             switch (packet_entry.header.flags.opcode) {
                 protocol.OpCode.c_subscribe => {
                     const topic = try packet_entry.get_topic_name();
-                    std.debug.print("subscribe {any} from {any}.\n", .{fd, topic});
                     try self.manager.subscribe(
                         fd,
                         topic,

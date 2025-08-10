@@ -65,7 +65,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
         /// Wait for events.
         /// Return the number of events the Poll has received.
         pub fn wait(self: *Self) Error!usize {
-            const c_result = std.c.epoll_wait(self.fd, &self.events, self.events.len, 0);
+            const c_result = std.c.epoll_wait(self.fd, &self.events, self.events.len, -1);
             if (c_result == -1) {
                 return Error.wait_failed;
             }

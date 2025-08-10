@@ -125,6 +125,7 @@ pub const Client = struct {
             const pack = try self.read_packet();
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
+                std.debug.print("collection found.\n", .{});
                 received = true;
                 try msg.from_packet_collection(c);
             }
