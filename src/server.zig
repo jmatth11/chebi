@@ -24,15 +24,15 @@ pub const Server = struct {
     poll: poll_ctx,
     listener: std.c.fd_t,
     srv_addr: std.net.Address,
-    errno: i32,
-    running: bool,
+    errno: std.c.E,
+    running: bool = false,
 
     pub fn init(alloc: std.mem.Allocator, port: u16) !Server {
-        const result: Server = .{
+        var result: Server = .{
             .alloc = alloc,
             .manager = manager.Manager.init(alloc),
             .packetManager = packet.PacketManager.init(alloc),
-            .packetHandler = handler.PacketHandler.init(alloc),
+            .packetHandler = try handler.PacketHandler.init(alloc),
             .poll = try poll_ctx.init(),
             .srv_addr = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, port),
             .listener = std.c.socket(
@@ -59,7 +59,7 @@ pub const Server = struct {
         const fcntl_res: c_int = std.c.fcntl(
             result.listener,
             std.c.F.SETFL,
-            std.c.fcntl(result.listener, std.c.F.GETFL, 0) | std.posix.SOCK.NONBLOCK,
+            std.c.fcntl(result.listener, std.c.F.GETFL, @as(c_int, 0)) | std.posix.SOCK.NONBLOCK,
         );
         if (fcntl_res == -1) {
             result.errno = std.posix.errno(-1);
@@ -91,10 +91,10 @@ pub const Server = struct {
                 const evt: std.c.epoll_event = self.poll.events[i];
                 if (evt.data.fd == self.listener) {
                     try self.accept();
-                } else if (evt.events & EPOLL.IN) {
+                } else if ((evt.events & EPOLL.IN) > 0) {
                     try self.event(evt.data.fd);
                 }
-                if (evt.events & (EPOLL.RDHUP | EPOLL.HUP)) {
+                if ((evt.events & (EPOLL.RDHUP | EPOLL.HUP)) > 0) {
                     self.remove(evt.data.fd);
                 }
             }
@@ -109,14 +109,14 @@ pub const Server = struct {
             const conn: std.c.fd_t = std.c.accept4(
                 self.listener,
                 &cli_addr.any,
-                &cli_addr.getOsSockLen(),
+                @constCast(&cli_addr.getOsSockLen()),
                 std.c.SOCK.NONBLOCK,
             );
             if (conn == -1) {
                 const accept_errno = std.posix.errno(-1);
                 // ignore these errors because they are from setting NONBLOCK
-                if (accept_errno != std.c.E.AGAIN and accept_errno != std.c.E.WOULDBLOCK) {
-                    std.debug.print("Server accept error: {}\n", .{accept_errno});
+                if (accept_errno != std.c.E.AGAIN) {
+                    std.debug.print("Server accept error: {any}\n", .{accept_errno});
                     self.errno = accept_errno;
                 }
                 accept_running = false;
@@ -124,37 +124,41 @@ pub const Server = struct {
                 try self.manager.add_client(conn);
                 errdefer self.manager.unsubscribe_all(conn);
                 try self.poll.add_connection(conn);
-                std.debug.print("adding connection {}\n", .{conn});
+                std.debug.print("adding connection {any}\n", .{conn});
             }
         }
     }
 
     fn remove(self: *Server, fd: std.c.fd_t) void {
         self.manager.unsubscribe_all(fd);
-        std.debug.print("closing connection for {}.\n", .{fd});
+        std.debug.print("closing connection for {any}.\n", .{fd});
         self.poll.delete(fd) catch {
-            std.debug.print("poll delete failed with errno: {}\n", .{std.posix.errno()});
+            std.debug.print("poll delete failed with errno: {any}\n", .{std.posix.errno(-1)});
         };
-        std.c.close(fd);
+        _ = std.c.close(fd);
     }
 
     fn event(self: *Server, fd: std.c.fd_t) !void {
         var read_running = true;
         while (read_running) {
-            const packet_entry = reader.next_packet(self.alloc, fd) catch |err| {
+            var packet_entry: packet.Packet = undefined;
+            if (reader.next_packet(self.alloc, fd)) |pack| {
+                packet_entry = pack;
+            } else |err| {
                 read_running = false;
                 if (err == reader.Error.errno) {
-                    std.debug.print("errno: {}\n", .{std.posix.errno()});
+                    std.debug.print("errno: {any}\n", .{std.posix.errno(-1)});
                 } else if (err == reader.Error.would_block) {
-                    std.debug.print("packet_entry error: {}\n", .{err});
+                    std.debug.print("packet_entry error: {any}\n", .{err});
                 }
-            };
+                continue;
+            }
             errdefer packet_entry.deinit();
             var release_packet_entry = true;
             switch (packet_entry.header.flags.opcode) {
                 protocol.OpCode.c_subscribe => {
                     const topic = try packet_entry.get_topic_name();
-                    std.debug.print("subscribe {} from {}.\n", .{fd, topic});
+                    std.debug.print("subscribe {any} from {any}.\n", .{fd, topic});
                     try self.manager.subscribe(
                         fd,
                         topic,
@@ -162,7 +166,7 @@ pub const Server = struct {
                 },
                 protocol.OpCode.c_unsubscribe => {
                     const topic = try packet_entry.get_topic_name();
-                    std.debug.print("unsubscribe {} from {}.\n", .{fd, topic});
+                    std.debug.print("unsubscribe {any} from {any}.\n", .{fd, topic});
                     self.manager.unsubscribe(
                         fd,
                         topic,
@@ -172,7 +176,7 @@ pub const Server = struct {
                     self.remove(fd);
                 },
                 protocol.OpCode.c_pong => {
-                    std.debug.print("pong received: {}\n", .{fd});
+                    std.debug.print("pong received: {any}\n", .{fd});
                     try self.manager.update_client_timestamp(fd);
                 },
                 protocol.OpCode.nc_continue, protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
@@ -183,7 +187,7 @@ pub const Server = struct {
                     }
                 },
                 else => {
-                    std.debug.print("unsupported opcode: {}\n", .{packet_entry.header.flags.opcode});
+                    std.debug.print("unsupported opcode: {any}\n", .{packet_entry.header.flags.opcode});
                 },
             }
             if (release_packet_entry) {

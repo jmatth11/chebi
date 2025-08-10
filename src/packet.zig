@@ -3,6 +3,8 @@ const proto = @import("protocol.zig");
 
 /// Packet specific errors.
 pub const Error = error{
+    topic_len_exceeded,
+    body_len_exceeded,
     /// Invalid header length.
     invalid_header_len,
     /// Invalid body length. This can apply to both topic name and payload.
@@ -101,23 +103,32 @@ pub const Packet = struct {
     }
 
     pub fn set_body(self: *Packet, topic_name: []const u8, payload: []const u8) !usize {
+        if (topic_name.len > std.math.maxInt(u16)) {
+            return Error.topic_len_exceeded;
+        }
+        if (payload.len > std.math.maxInt(u16)) {
+            return Error.body_len_exceeded;
+        }
         if (self.body) |body| {
             self.alloc.free(body);
         }
-        self.body = self.alloc.alloc(u8, topic_name.len + payload.len);
+        self.body = try self.alloc.alloc(u8, topic_name.len + payload.len);
         if (self.body) |body| {
-            std.mem.copyForwards(body, topic_name);
-            self.header.topic_len = topic_name.len;
-            std.mem.copyForwards(body[topic_name.len..], payload);
-            self.header.payload_len = payload.len;
+            std.mem.copyForwards(u8, body, topic_name);
+            self.header.topic_len = @intCast(topic_name.len);
+            std.mem.copyForwards(u8, body[topic_name.len..], payload);
+            self.header.payload_len = @intCast(payload.len);
         }
         return self.body.?.len;
     }
 
     pub fn set_topic(self: *Packet, topic_name: []const u8) !usize {
+        if (topic_name.len > std.math.maxInt(u16)) {
+            return Error.topic_len_exceeded;
+        }
         if (self.body == null) {
             self.body = try self.alloc.alloc(u8, topic_name.len);
-            self.header.topic_len = topic_name.len;
+            self.header.topic_len = @intCast(topic_name.len);
         }
         if (topic_name.len == self.header.topic_len) {
             std.mem.copyForwards(u8, self.body.?, topic_name);
@@ -129,10 +140,10 @@ pub const Packet = struct {
             std.mem.copyForwards(u8, new_body, topic_name);
             std.mem.copyForwards(
                 u8,
-                new_body[topic_name..],
+                new_body[topic_name.len..],
                 self.body.?[self.header.topic_len..],
             );
-            self.header.topic_len = topic_name.len;
+            self.header.topic_len = @intCast(topic_name.len);
             self.alloc.free(self.body.?);
             self.body = new_body;
         }
@@ -140,9 +151,12 @@ pub const Packet = struct {
     }
 
     pub fn set_payload(self: *Packet, payload: []const u8) !usize {
+        if (payload.len > std.math.maxInt(u16)) {
+            return Error.body_len_exceeded;
+        }
         if (self.body == null) {
             self.body = try self.alloc.alloc(u8, payload.len);
-            self.header.payload_len = payload.len;
+            self.header.payload_len = @intCast(payload.len);
         }
         if (self.header.payload_len == payload.len) {
             std.mem.copyForwards(u8, self.body.?[self.header.topic_len..], payload);
@@ -152,7 +166,7 @@ pub const Packet = struct {
                 self.header.topic_len + payload.len,
             );
             std.mem.copyForwards(u8, new_body[self.header.topic_len..], payload);
-            self.header.payload_len = payload.len;
+            self.header.payload_len = @intCast(payload.len);
             self.body = new_body;
         }
         return self.body.?.len;
@@ -164,10 +178,10 @@ pub const Packet = struct {
             return Error.invalid_buffer_len;
         }
         const offset: usize = try self.header.write(buf);
-        if (self.body.?.len == 0) {
-            return;
-        }
         if (self.body) |body| {
+            if (body.len == 0) {
+                return;
+            }
             @memcpy(buf[offset..], body);
         }
     }

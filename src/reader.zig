@@ -1,5 +1,6 @@
 const std = @import("std");
 const packet = @import("packet.zig");
+const proto = @import("protocol.zig");
 
 /// Reading related errors.
 pub const Error = error {
@@ -19,23 +20,33 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
     var result: packet.Packet = packet.Packet.init(alloc);
     // peek header info
     var header: [6]u8 = @splat(0);
-    var recv_len: usize = std.c.recv(socket, &header, 6, 0);
+    var recv_len: isize = std.c.recv(socket, &header, 6, 0);
     if (recv_len == -1) {
-        const errno = std.posix.errno();
-        if (errno == std.c.E.AGAIN or errno == std.c.E.WOULDBLOCK) {
+        const errno = std.posix.errno(-1);
+        if (errno == std.c.E.AGAIN) {
             return Error.would_block;
         }
         return Error.errno;
     }
     if (recv_len < 6) {
-        return Error.invalid_header;
+        return Error.header_invalid;
     }
-    recv_len = try result.parse_header(&header);
-    if (recv_len < 6) {
-        return Error.invalid_header;
+    const parse_len = try result.parse_header(&header);
+    if (parse_len < 6) {
+        return Error.header_invalid;
+    }
+    if (result.header.flags.opcode == proto.OpCode.c_close) {
+        return result;
     }
     try result.alloc_buffer();
     recv_len = std.c.recv(socket, result.body.?.ptr, result.body.?.len, 0);
+    if (recv_len == -1) {
+        const errno = std.posix.errno(-1);
+        if (errno == std.c.E.AGAIN) {
+            return Error.would_block;
+        }
+        return Error.errno;
+    }
     if (recv_len < result.body.?.len) {
         return Error.payload_len_invalid;
     }

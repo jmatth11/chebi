@@ -12,22 +12,24 @@ pub const Error = error{
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
     collection: std.ArrayList(packet.PacketCollection),
-    mutex: std.Thread.Mutex,
-    pool: std.Thread.Pool,
-    thread_count: usize,
+    //mutex: std.Thread.Mutex,
+    //pool: std.Thread.Pool,
 
-    pub fn init(alloc: std.mem.Allocator) PacketHandler {
-        const thread_count: usize = (try std.Thread.getCpuCount()) * 2;
-        const options: std.Thread.Pool.Options = .{
-            .allocator = alloc,
-            .n_jobs = thread_count,
-        };
+    pub fn init(alloc: std.mem.Allocator) !PacketHandler {
+        //const options: std.Thread.Pool.Options = .{
+        //    .allocator = alloc,
+        //};
+        //var pool: std.Thread.Pool = .{
+        //    .allocator = undefined,
+        //    .threads = undefined,
+        //    .ids = undefined,
+        //};
+        //try std.Thread.Pool.init(&pool, options);
         return .{
             .alloc = alloc,
             .collection = std.ArrayList(packet.PacketCollection).init(alloc),
-            .pool = std.Thread.Pool.init(options),
-            .mutex = .{},
-            .thread_count = thread_count,
+            //.pool = pool,
+            //.mutex = .{},
         };
     }
 
@@ -43,7 +45,7 @@ pub const PacketHandler = struct {
 
     pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
         // TODO this is MVP approach, revisit to parallelize
-        for (self.collection.items) |collection| {
+        for (self.collection.items) |*collection| {
             const topic = collection.topic;
             const clients_opt: ?std.ArrayList(std.c.fd_t) = mapping.get(topic);
             if (clients_opt) |clients| {
@@ -54,10 +56,10 @@ pub const PacketHandler = struct {
                 }
             }
             // free collection once done
-            collection.deinit();
+            collection.*.deinit();
         }
         // reset collection after processing
-        self.collection.resize(0);
+        try self.collection.resize(0);
     }
 
     /// Send the packet to the given socket.

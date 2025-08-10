@@ -33,7 +33,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
                 self.fd,
                 EPOLL.CTL_ADD,
                 event.data.fd,
-                &event,
+                event,
             );
             if (result == -1) {
                 return Error.add_failed;
@@ -42,7 +42,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
 
         /// Add a listener for the Polling operations.
         pub fn add_listener(self: *Self, listener: std.c.fd_t) Error!void {
-            const event: std.c.epoll_event = .{
+            var event: std.c.epoll_event = .{
                 .data = .{
                     .fd = listener,
                 },
@@ -53,7 +53,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
 
         /// Add a connection to monitor events on.
         pub fn add_connection(self: *Self, conn: std.c.fd_t) Error!void {
-            const event: std.c.epoll_event = .{
+            var event: std.c.epoll_event = .{
                 .data = .{
                     .fd = conn,
                 },
@@ -65,11 +65,11 @@ pub fn Poll(comptime max_events: comptime_int) type {
         /// Wait for events.
         /// Return the number of events the Poll has received.
         pub fn wait(self: *Self) Error!usize {
-            const result = std.c.epoll_wait(self.fd, self.events, self.events.len, 0);
-            if (result == -1) {
+            const c_result = std.c.epoll_wait(self.fd, &self.events, self.events.len, 0);
+            if (c_result == -1) {
                 return Error.wait_failed;
             }
-            return result;
+            return @intCast(c_result);
         }
 
         pub fn delete(self: *Self, conn: std.c.fd_t) !void {

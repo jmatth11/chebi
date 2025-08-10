@@ -20,7 +20,7 @@ pub const ClientInfo = struct {
         return .{
             .alloc = alloc,
             .fd = fd,
-            .last_active = std.time.Instant.now(),
+            .last_active = try std.time.Instant.now(),
             .topics = std.ArrayList([]const u8).init(alloc),
         };
     }
@@ -91,7 +91,7 @@ pub const Manager = struct {
         }
         const topic_name: []const u8 = self.topics.getKey(topic).?;
         try client_info.topics.append(topic_name);
-        var topic_mapping: std.ArrayList(std.c.fd_t) = try self.topics.getPtr(topic).?;
+        var topic_mapping: *std.ArrayList(std.c.fd_t) = self.topics.getPtr(topic).?;
         try topic_mapping.append(client);
     }
 
@@ -111,7 +111,7 @@ pub const Manager = struct {
                 }
             }
             if (found) {
-                ct.swapRemove(idx);
+                _ = ct.topics.swapRemove(idx);
             }
         }
         const topic_mapping = self.topics.getPtr(topic);
@@ -126,7 +126,7 @@ pub const Manager = struct {
                 }
             }
             if (found) {
-                tm.swapRemove(idx);
+                _ = tm.swapRemove(idx);
             }
         }
     }
@@ -148,7 +148,7 @@ pub const Manager = struct {
                     }
                 }
                 if (found) {
-                    topic_mapping.swapRemove(idx);
+                    _ = topic_mapping.swapRemove(idx);
                 }
             }
             ct.deinit();
@@ -169,23 +169,23 @@ pub const Manager = struct {
     pub fn update_client_timestamp(self: *Manager, client: std.c.fd_t) !void {
         const client_option: ?*ClientInfo = self.clients.getPtr(client);
         if (client_option) |ct| {
-            ct.last_active = std.time.Instant.now();
+            ct.last_active = try std.time.Instant.now();
         }
         return Error.client_dne;
     }
 
     /// Deinitalize internals of the Manager.
     pub fn deinit(self: *Manager) void {
-        const client_it = self.clients.valueIterator();
+        var client_it = self.clients.valueIterator();
         while (client_it.next()) |value| {
             value.deinit();
         }
         self.clients.deinit();
-        const topic_val_it = self.topics.valueIterator();
+        var topic_val_it = self.topics.valueIterator();
         while (topic_val_it.next()) |val| {
             val.deinit();
         }
-        const topic_key_it = self.topics.keyIterator();
+        var topic_key_it = self.topics.keyIterator();
         while (topic_key_it.next()) |key| {
             self.alloc.free(key.*);
         }

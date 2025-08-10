@@ -87,7 +87,7 @@ pub const Protocol = struct {
     payload_len: u16 = 0,
 
     /// Get the header size in bytes.
-    pub fn header_size() usize {
+    pub fn header_size(_: *const Protocol) usize {
         return 6;
     }
 
@@ -126,7 +126,7 @@ pub const Protocol = struct {
     }
 
     /// Write the protocol to the given buffer.
-    pub fn write(self: *Protocol, buf: []u8) Errors!usize {
+    pub fn write(self: *const Protocol, buf: []u8) Errors!usize {
         if (buf.len < self.header_size()) {
             return Errors.header_len_invalid;
         }
