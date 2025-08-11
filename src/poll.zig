@@ -72,6 +72,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
             return @intCast(c_result);
         }
 
+        /// Delete file descriptor from poll.
         pub fn delete(self: *Self, conn: std.c.fd_t) !void {
             const result = std.c.epoll_ctl(
                 self.fd,

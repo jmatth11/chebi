@@ -163,6 +163,10 @@ pub const Server = struct {
             errdefer packet_entry.deinit();
             var release_packet_entry = true;
             switch (packet_entry.header.flags.opcode) {
+                protocol.OpCode.c_connection => {
+                    // TODO handle connection payload.
+                    // this should include server size limit
+                },
                 protocol.OpCode.c_subscribe => {
                     const topic = try packet_entry.get_topic_name();
                     try self.manager.subscribe(
@@ -172,7 +176,7 @@ pub const Server = struct {
                 },
                 protocol.OpCode.c_unsubscribe => {
                     const topic = try packet_entry.get_topic_name();
-                    std.debug.print("unsubscribe {any} from {any}.\n", .{fd, topic});
+                    std.debug.print("unsubscribe {any} from {any}.\n", .{ fd, topic });
                     self.manager.unsubscribe(
                         fd,
                         topic,

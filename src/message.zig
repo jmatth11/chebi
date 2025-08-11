@@ -24,8 +24,8 @@ pub const Type = enum {
 pub const Message = struct {
     alloc: std.mem.Allocator,
     msg_type: Type = .text,
-    topic: ?[]u8 = null,
-    payload: ?[]u8 = null,
+    topic: ?[]const u8 = null,
+    payload: ?[]const u8 = null,
 
     pub fn init(alloc: std.mem.Allocator) Message {
         const m: Message = .{
@@ -41,7 +41,7 @@ pub const Message = struct {
         return result;
     }
 
-    pub fn init_with_body_no_copy(alloc: std.mem.Allocator, topic_name: []u8, payload: []u8, msg_type: Type) Message {
+    pub fn init_with_body_no_copy(alloc: std.mem.Allocator, topic_name: []const u8, payload: []const u8, msg_type: Type) Message {
         var result = Message.init(alloc);
         result.topic = topic_name;
         result.payload = payload;
@@ -75,7 +75,7 @@ pub const Message = struct {
             self.alloc.free(p);
         }
         const full_size: usize = pc.payload_size();
-        self.payload = try self.alloc.alloc(u8, full_size);
+        const payload = try self.alloc.alloc(u8, full_size);
         var offset: usize = 0;
         for (pc.packets.items) |pack| {
             const len = pack.header.payload_len;
@@ -83,9 +83,10 @@ pub const Message = struct {
             if (offset_len > full_size) {
                 return Error.packet_collection_len_mismatch;
             }
-            @memcpy(self.payload.?[offset..offset_len], try pack.get_payload());
+            @memcpy(payload[offset..offset_len], try pack.get_payload());
             offset += len;
         }
+        self.payload = payload;
         errdefer self.alloc.free(self.payload.?);
         self.topic = try self.alloc.dupe(u8, topic_name);
         self.msg_type = switch (pc.opcode) {

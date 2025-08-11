@@ -16,6 +16,7 @@ pub const Error = error{
     server_connection,
     /// The topic name was empty.
     topic_name_empty,
+    server_size_limit,
 };
 
 /// Simple Client to interact with the Server.
@@ -26,6 +27,7 @@ pub const Client = struct {
     packetManager: packet.PacketManager,
     errno: std.c.E = std.c.E.SUCCESS,
     channel: std.atomic.Value(u8),
+    limit: ?usize = null,
 
     /// Initialize Client with allocator and Address.
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
@@ -119,13 +121,19 @@ pub const Client = struct {
         // use arena for message allocator
         var arena = std.heap.ArenaAllocator.init(self.alloc);
         defer arena.deinit();
-        // TODO switch to use a no-copy version of Message
-        const msg = try message.Message.init_with_body(arena.allocator(), topic_name, payload, msg_type);
+        const msg = try message.Message.init_with_body_no_copy(arena.allocator(), topic_name, payload, msg_type);
         try self.write_msg(msg);
     }
 
     /// Write a Message structure to the server.
     pub fn write_msg(self: *Client, msg: message.Message) !void {
+        if (self.limit) |size_limit| {
+            if (msg.payload) |payload| {
+                if (payload.len > size_limit) {
+                    return Error.server_size_limit;
+                }
+            }
+        }
         const channel = self.get_channel();
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
