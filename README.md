@@ -2,7 +2,7 @@
 
 **!! still experimental !!**
 
-A small message bus that written in zig to easily spin up on the fly.
+A small message bus written in zig to easily spin up on the fly.
 
 The goal of this message bus is to provide support for standard text and binary
 formats, with options for compression, and handles multiplexing messages.
