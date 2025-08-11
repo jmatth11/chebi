@@ -1,6 +1,9 @@
 const std = @import("std");
 const proto = @import("protocol.zig");
 
+pub const ClientChannel = std.AutoHashMap(std.c.fd_t, ChannelCollection);
+pub const ChannelPackets = std.AutoHashMap(u7, PacketCollection);
+
 /// Packet specific errors.
 pub const Error = error{
     topic_len_exceeded,

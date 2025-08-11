@@ -7,11 +7,17 @@ const manager = @import("manager.zig");
 pub const Error = error{
     /// This is issued if a would_block occurs.
     try_again,
+    errno,
+};
+
+pub const PacketHandlerInfo = struct {
+    from: std.c.fd_t,
+    collection: packet.PacketCollection,
 };
 
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
-    collection: std.ArrayList(packet.PacketCollection),
+    collection: std.ArrayList(PacketHandlerInfo),
     //mutex: std.Thread.Mutex,
     //pool: std.Thread.Pool,
 
@@ -27,13 +33,13 @@ pub const PacketHandler = struct {
         //try std.Thread.Pool.init(&pool, options);
         return .{
             .alloc = alloc,
-            .collection = std.ArrayList(packet.PacketCollection).init(alloc),
+            .collection = std.ArrayList(PacketHandlerInfo).init(alloc),
             //.pool = pool,
             //.mutex = .{},
         };
     }
 
-    pub fn push(self: *PacketHandler, entry: packet.PacketCollection) !void {
+    pub fn push(self: *PacketHandler, entry: PacketHandlerInfo) !void {
         // TODO this approach was when it's parallelized
         // we also insert at the beginning to treat it like a Queue.
         // But this approach might change
@@ -45,18 +51,24 @@ pub const PacketHandler = struct {
 
     pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
         // TODO this is MVP approach, revisit to parallelize
-        for (self.collection.items) |*collection| {
+        for (self.collection.items) |*info| {
+            const collection = info.collection;
+            const from = info.from;
             const topic = collection.topic;
             const clients_opt: ?std.ArrayList(std.c.fd_t) = mapping.get(topic);
             if (clients_opt) |clients| {
                 for (collection.packets.items) |payload| {
                     for (clients.items) |socket| {
+                        // skip ourselves
+                        if (from == socket) {
+                            continue;
+                        }
                         try self.send(socket, payload);
                     }
                 }
             }
             // free collection once done
-            collection.*.deinit();
+            info.*.collection.deinit();
         }
         // reset collection after processing
         try self.collection.resize(0);
@@ -67,6 +79,8 @@ pub const PacketHandler = struct {
         writer.write_packet(self.alloc, socket, payload) catch |err| {
             if (err == writer.Error.would_block) {
                 return Error.try_again;
+            } else if (err == writer.Error.errno) {
+                return Error.errno;
             }
             return err;
         };
@@ -74,8 +88,8 @@ pub const PacketHandler = struct {
 
     pub fn deinit(self: *PacketHandler) void {
         if (self.collection.items.len > 0) {
-            for (self.collection.items) |item| {
-                item.deinit();
+            for (self.collection.items) |*item| {
+                item.*.collection.deinit();
             }
         }
         self.collection.deinit();

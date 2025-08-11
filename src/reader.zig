@@ -4,6 +4,8 @@ const proto = @import("protocol.zig");
 
 /// Reading related errors.
 pub const Error = error {
+    /// Empty message was received (likely connection closing)
+    empty_message,
     /// Header is invalid
     header_invalid,
     /// The payload length is invalid.
@@ -27,6 +29,9 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
             return Error.would_block;
         }
         return Error.errno;
+    }
+    if (recv_len == 0) {
+        return Error.empty_message;
     }
     if (recv_len < 6) {
         return Error.header_invalid;

@@ -10,4 +10,5 @@ pub fn main() !void {
     try c.subscribe("test");
     try c.write("test", "hello from pub", chebi.message.Type.text);
     std.time.sleep(std.time.ms_per_s * 5);
+    try c.close();
 }

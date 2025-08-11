@@ -189,7 +189,10 @@ pub const Server = struct {
                     release_packet_entry = false;
                     const ready_packet = try self.packetManager.store_or_pop(fd, packet_entry);
                     if (ready_packet) |p| {
-                        try self.packetHandler.push(p);
+                        try self.packetHandler.push(.{
+                            .from = fd,
+                            .collection = p,
+                        });
                     }
                 },
                 else => {
@@ -200,6 +203,12 @@ pub const Server = struct {
                 packet_entry.deinit();
             }
         }
-        try self.packetHandler.process(self.manager.topics);
+        self.packetHandler.process(self.manager.topics) catch |err| {
+            if (err == handler.Error.errno) {
+                const errno = std.posix.errno(-1);
+                std.debug.print("server errno: {any}\n", .{errno});
+            }
+            return err;
+        };
     }
 };

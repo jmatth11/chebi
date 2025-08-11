@@ -41,6 +41,14 @@ pub const Message = struct {
         return result;
     }
 
+    pub fn init_with_body_no_copy(alloc: std.mem.Allocator, topic_name: []u8, payload: []u8, msg_type: Type) Message {
+        var result = Message.init(alloc);
+        result.topic = topic_name;
+        result.payload = payload;
+        result.msg_type = msg_type;
+        return result;
+    }
+
     pub fn set_body(self: *Message, topic_name: []const u8, payload: []const u8) !void {
         if (topic_name.len == 0) {
             return Error.topic_name_empty;
@@ -143,6 +151,7 @@ pub const Message = struct {
                     Type.bin => proto.OpCode.nc_bin,
                     Type.text => proto.OpCode.nc_text,
                 };
+                offset_len = body_len;
             } else {
                 pack.header.flags.fin = false;
                 pack.header.flags.opcode = proto.OpCode.nc_continue;

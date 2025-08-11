@@ -16,5 +16,9 @@ pub fn main() !void {
         .mask = std.posix.empty_sigset,
         .flags = 0,
     }, null);
-    try s.listen();
+    s.listen() catch |err| {
+        const errno = std.posix.errno(-1);
+        std.debug.print("errno: {any}\n", .{errno});
+        std.debug.print("err = {any}\n", .{err});
+    };
 }

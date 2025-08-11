@@ -6,6 +6,8 @@ const message = @import("message.zig");
 const reader = @import("reader.zig");
 
 pub const Error = error{
+    would_block,
+
     listener_setup,
     server_connection,
     topic_name_empty,
@@ -17,7 +19,7 @@ pub const Client = struct {
     srv_addr: std.net.Address,
     packetManager: packet.PacketManager,
     errno: std.c.E = std.c.E.SUCCESS,
-    channel: u8 = 0,
+    channel: std.atomic.Value(u8),
 
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
         var result: Client = .{
@@ -29,6 +31,7 @@ pub const Client = struct {
                 std.c.IPPROTO.TCP,
             ),
             .packetManager = packet.PacketManager.init(alloc),
+            .channel = std.atomic.Value(u8).init(0),
         };
         if (result.listener == -1) {
             result.errno = std.posix.errno(-1);
@@ -62,7 +65,7 @@ pub const Client = struct {
         pack.header.info.compressed = false;
         writer.write_packet(self.alloc, self.listener, pack) catch |err| {
             if (err == writer.Error.would_block) {
-                std.debug.print("writer would block\n", .{});
+                return Error.would_block;
             }
             return err;
         };
@@ -78,7 +81,7 @@ pub const Client = struct {
         pack.header.info.compressed = false;
         writer.write_packet(self.alloc, self.listener, pack) catch |err| {
             if (err == writer.Error.would_block) {
-                std.debug.print("writer would block\n", .{});
+                return Error.would_block;
             }
             return err;
         };
@@ -93,7 +96,7 @@ pub const Client = struct {
         pack.header.info.compressed = false;
         writer.write_packet(self.alloc, self.listener, pack) catch |err| {
             if (err == writer.Error.would_block) {
-                std.debug.print("writer would block\n", .{});
+                return Error.would_block;
             }
             return err;
         };
@@ -106,12 +109,13 @@ pub const Client = struct {
     }
 
     pub fn write_msg(self: *Client, msg: message.Message) !void {
-        var pc = try msg.packet_collection(self.get_channel());
+        const channel = self.get_channel();
+        var pc = try msg.packet_collection(channel);
         defer pc.deinit();
         for (pc.packets.items) |pack| {
             writer.write_packet(self.alloc, self.listener, pack) catch |err| {
                 if (err == writer.Error.would_block) {
-                    std.debug.print("writer would block\n", .{});
+                    return Error.would_block;
                 }
                 return err;
             };
@@ -125,7 +129,6 @@ pub const Client = struct {
             const pack = try self.read_packet();
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
-                std.debug.print("collection found.\n", .{});
                 received = true;
                 try msg.from_packet_collection(c);
             }
@@ -146,7 +149,7 @@ pub const Client = struct {
         pack.header.info.compressed = false;
         writer.write_packet(self.alloc, self.listener, pack) catch |err| {
             if (err == writer.Error.would_block) {
-                std.debug.print("writer would block\n", .{});
+                return Error.would_block;
             }
             return err;
         };
@@ -155,7 +158,11 @@ pub const Client = struct {
     }
 
     fn connect_to_server(self: *Client) !void {
-        const c_err = std.c.connect(self.listener, &self.srv_addr.any, self.srv_addr.getOsSockLen());
+        const c_err = std.c.connect(
+            self.listener,
+            &self.srv_addr.any,
+            self.srv_addr.getOsSockLen(),
+        );
         if (c_err == -1) {
             self.errno = std.posix.errno(-1);
             return Error.server_connection;
@@ -163,10 +170,13 @@ pub const Client = struct {
     }
 
     fn get_channel(self: *Client) u7 {
-        const result: u7 = @intCast(self.channel);
-        self.channel = self.channel + 1;
+        const a_val = self.channel.fetchAdd(1, .acq_rel);
         // use mask to reset value once it overflows
-        self.channel = self.channel & 0b01111111;
+        const masked = a_val & 0b01111111;
+        const result: u7 = @intCast(masked);
+        if (a_val > 127) {
+            _ = self.channel.cmpxchgStrong(a_val, 0, .acq_rel, .monotonic);
+        }
         return result;
     }
 };
