@@ -22,7 +22,7 @@ automatically for the clients.
 ## Multiplexed Messaging
 
 The spec allows for messages to be grouped by top-down of topic, client socket, and message channel.
-This allows large messages to not clog up the pipeline if smaller messages can be proessed quicker.
+This allows large messages to not clog up the pipeline if smaller messages can be processed quicker.
 
 ## Examples
 
@@ -30,7 +30,7 @@ You can find different examples in the `examples/` folder.
 
 ## Simple Demo
 
-Simple demo of 2 subscribers and 2 publisher.
+Simple demo of 2 subscribers and 1 publisher.
 
 https://github.com/user-attachments/assets/27441712-afe1-4b85-b1d2-dc7ef17cec22
 
