@@ -16,7 +16,12 @@ pub const Error = error{
     server_connection,
     /// The topic name was empty.
     topic_name_empty,
+    /// Exceeded server size limit for message.
     server_size_limit,
+    /// Generic catch for connection error to the server.
+    connection_error,
+    /// Server info message error.
+    server_message_invalid,
 };
 
 /// Simple Client to interact with the Server.
@@ -62,8 +67,41 @@ pub const Client = struct {
 
     /// Connect to the server.
     pub fn connect(self: *Client) !void {
-        // TODO add ability to pass connection options like max_msg_size
         try self.connect_to_server();
+        var pack = packet.Packet.init(self.alloc);
+        defer pack.deinit();
+        pack.header.flags.fin = true;
+        pack.header.flags.opcode = protocol.OpCode.c_connection;
+        pack.header.info.channel = self.get_channel();
+        pack.header.info.compressed = false;
+        writer.write_packet(self.alloc, self.listener, pack) catch |err| {
+            if (err == writer.Error.would_block) {
+                return Error.would_block;
+            }
+            return err;
+        };
+        var resp: packet.Packet = try reader.next_packet(self.alloc, self.listener);
+        defer resp.deinit();
+        if (resp.header.flags.opcode != protocol.OpCode.c_connection) {
+            return Error.connection_error;
+        }
+        if (resp.body) |body| {
+            var server_flags: protocol.ServerFlags = .{};
+            server_flags.unpack(body[0]);
+            var offset: usize = 1;
+            if (server_flags.msg_limit) {
+                const msg_limit_size: usize = @sizeOf(usize);
+                if (body.len < (offset + msg_limit_size)) {
+                    return Error.server_message_invalid;
+                }
+                self.limit = std.mem.readVarInt(
+                    usize,
+                    body[offset..(offset + msg_limit_size)],
+                    .little,
+                );
+                offset += msg_limit_size;
+            }
+        }
     }
 
     /// Subscribe to a topic.
@@ -121,7 +159,7 @@ pub const Client = struct {
         // use arena for message allocator
         var arena = std.heap.ArenaAllocator.init(self.alloc);
         defer arena.deinit();
-        const msg = try message.Message.init_with_body_no_copy(arena.allocator(), topic_name, payload, msg_type);
+        const msg = message.Message.init_with_body_no_copy(arena.allocator(), topic_name, payload, msg_type);
         try self.write_msg(msg);
     }
 

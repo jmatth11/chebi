@@ -75,7 +75,7 @@ pub const PacketHandler = struct {
     }
 
     /// Send the packet to the given socket.
-    fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
+    pub fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
         writer.write_packet(self.alloc, socket, payload) catch |err| {
             if (err == writer.Error.would_block) {
                 return Error.try_again;

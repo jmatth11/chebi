@@ -7,6 +7,8 @@ pub const ChannelPackets = std.AutoHashMap(u7, PacketCollection);
 /// Packet specific errors.
 pub const Error = error{
     topic_len_exceeded,
+    /// The body length has been exceeded.
+    /// Either overall limit or by server limit.
     body_len_exceeded,
     /// Invalid header length.
     invalid_header_len,
@@ -206,6 +208,7 @@ pub const PacketCollection = struct {
     channel: u8 = 0,
     topic: []const u8 = undefined,
     packets: std.ArrayList(Packet) = undefined,
+    limit: ?usize = null,
 
     /// Init an empty packet collection.
     pub fn init(alloc: std.mem.Allocator) PacketCollection {
@@ -225,6 +228,14 @@ pub const PacketCollection = struct {
 
     /// Add the given entry to the collection, pulling out relevant information.
     pub fn add(self: *PacketCollection, entry: Packet) !void {
+        const current_size = self.payload_size();
+        if (self.limit) |limit| {
+            if (entry.body) |body| {
+                if ((current_size + body.len) > limit) {
+                    return Error.body_len_exceeded;
+                }
+            }
+        }
         const topic = try entry.get_topic_name();
         const channel: u8 = @intCast(entry.header.info.channel);
         // if it's the first message, pull out metadata.
@@ -268,6 +279,7 @@ pub const PacketCollection = struct {
 pub const ChannelCollection = struct {
     alloc: std.mem.Allocator,
     channels: std.AutoHashMap(u7, PacketCollection),
+    limit: ?usize = null,
 
     pub fn init(alloc: std.mem.Allocator) ChannelCollection {
         return .{
@@ -301,6 +313,12 @@ pub const ChannelCollection = struct {
                         std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
                     }
                     return try self.new_or_pop(channel, entry);
+                } else if (err == Error.body_len_exceeded) {
+                    std.debug.print("message body has exceeded server limit: {any}\n", .{self.limit});
+                    coll.deinit();
+                    if (!self.channels.remove(channel)) {
+                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                    }
                 } else {
                     return err;
                 }
@@ -319,7 +337,8 @@ pub const ChannelCollection = struct {
 
     fn new_or_pop(self: *ChannelCollection, channel: u7, entry: Packet) !?PacketCollection {
         var result: ?PacketCollection = null;
-        const pc = try PacketCollection.init_with_entry(self.alloc, entry);
+        var pc = try PacketCollection.init_with_entry(self.alloc, entry);
+        pc.limit = self.limit;
         if (entry.header.flags.fin) {
             result = pc;
         } else {
@@ -345,6 +364,7 @@ pub const ChannelCollection = struct {
 pub const PacketManager = struct {
     alloc: std.mem.Allocator,
     collector: std.StringHashMap(std.AutoHashMap(std.c.fd_t, ChannelCollection)),
+    limit: ?usize = null,
 
     pub fn init(alloc: std.mem.Allocator) PacketManager {
         return .{
@@ -374,6 +394,7 @@ pub const PacketManager = struct {
                     result = pc;
                 } else {
                     var chan = ChannelCollection.init(self.alloc);
+                    chan.limit = self.limit;
                     _ = try chan.store_or_pop(entry);
                     try cm.put(client, chan);
                 }
@@ -392,6 +413,7 @@ pub const PacketManager = struct {
         } else {
             var map = std.AutoHashMap(std.c.fd_t, ChannelCollection).init(self.alloc);
             var chan = ChannelCollection.init(self.alloc);
+            chan.limit = self.limit;
             _ = try chan.store_or_pop(entry);
             try map.put(client, chan);
             try self.collector.put(topic, map);

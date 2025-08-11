@@ -16,6 +16,7 @@ pub const Error = error{
     listener_failed,
 };
 
+/// Server class to setup and manage the control point of the message bus.
 pub const Server = struct {
     alloc: std.mem.Allocator,
     manager: manager.Manager,
@@ -26,7 +27,10 @@ pub const Server = struct {
     srv_addr: std.net.Address,
     errno: std.c.E,
     running: bool = false,
+    msg_limit: ?usize = null,
+    version: u3 = 0,
 
+    /// Initialize with alloator and port number.
     pub fn init(alloc: std.mem.Allocator, port: u16) !Server {
         var result: Server = .{
             .alloc = alloc,
@@ -75,10 +79,19 @@ pub const Server = struct {
         // TODO probably need to handle closing all connections and epoll
     }
 
+    /// Set the message limit for the server.
+    pub fn set_msg_limit(self: *Server, limit: ?usize) void {
+        self.msg_limit = limit;
+        self.packetManager.limit = limit;
+    }
+
+    /// Set the flag to stop the server.
     pub fn stop(self: *Server) void {
         self.running = false;
     }
 
+    /// Start listening.
+    /// This funtion blocks for the duration of the Server's lifetime.
     pub fn listen(self: *Server) !void {
         if (std.c.listen(self.listener, std.c.SOMAXCONN) == -1) {
             self.errno = std.posix.errno(-1);
@@ -122,8 +135,6 @@ pub const Server = struct {
                 }
                 accept_running = false;
             } else {
-                try self.manager.add_client(conn);
-                errdefer self.manager.unsubscribe_all(conn);
                 try self.poll.add_connection(conn);
                 std.debug.print("adding connection {any}\n", .{conn});
             }
@@ -164,8 +175,13 @@ pub const Server = struct {
             var release_packet_entry = true;
             switch (packet_entry.header.flags.opcode) {
                 protocol.OpCode.c_connection => {
-                    // TODO handle connection payload.
-                    // this should include server size limit
+                    try self.manager.add_client(fd);
+                    var pack = try self.server_info_packet();
+                    defer pack.deinit();
+                    self.packetHandler.send(fd, pack) catch |err| {
+                        std.debug.print("connection packet error: {any}\n", .{err});
+                        self.remove(fd);
+                    };
                 },
                 protocol.OpCode.c_subscribe => {
                     const topic = try packet_entry.get_topic_name();
@@ -215,4 +231,32 @@ pub const Server = struct {
             return err;
         };
     }
+
+    fn server_info_packet(self: *Server) !packet.Packet {
+        const len:usize = 1 * @sizeOf(usize);
+        var buf: []u8 = try self.alloc.alloc(u8, len);
+        var pack = packet.Packet.init(self.alloc);
+        pack.header.flags.fin = true;
+        pack.header.flags.opcode = protocol.OpCode.c_connection;
+        pack.header.flags.version = self.version;
+        pack.header.topic_len = 0;
+        var flags: protocol.ServerFlags = .{};
+        var offset: usize = 1;
+        if (self.msg_limit) |limit| {
+            flags.msg_limit = true;
+            std.mem.writeInt(
+                usize,
+                buf[1..9],
+                limit,
+                .little,
+            );
+            offset += @sizeOf(usize);
+        }
+
+        buf[0] = flags.pack();
+        pack.body = buf;
+        pack.header.payload_len = @intCast(pack.body.?.len);
+        return pack;
+    }
+
 };

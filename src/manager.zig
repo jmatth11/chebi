@@ -73,6 +73,8 @@ pub const Manager = struct {
         if (!self.topics.contains(topic)) {
             try self.add_topic(topic);
         }
+        // TODO maybe we shouldn't just add a client if it doesn't exist.
+        // we might won't to force a connection call before they can subscribe.
         if (!self.clients.contains(client)) {
             try self.add_client(client);
         }

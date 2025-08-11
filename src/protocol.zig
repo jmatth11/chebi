@@ -37,6 +37,25 @@ pub const OpCode = enum(u4) {
     c_res4,
 };
 
+/// Server Flags to be sent back on a connection message.
+/// This structure includes flags to describe the server's info.
+pub const ServerFlags = packed struct(u8) {
+    /// reserved bits
+    reserved: u7 = 0,
+    /// Flag for if a message limit has been set.
+    msg_limit: bool = false,
+
+    /// Unpack the given byte into this structures properties.
+    pub fn unpack(self: *ServerFlags, b: u8) void {
+        self.* = @bitCast(b);
+    }
+
+    /// Pack this structure into a byte form.
+    pub fn pack(self: ServerFlags) u8 {
+        return @bitCast(self);
+    }
+};
+
 /// Top Level Flags of the protocol.
 pub const Flags = packed struct(u8) {
     /// The operation code of the protocol message.

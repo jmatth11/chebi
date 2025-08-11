@@ -40,7 +40,7 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
     if (parse_len < 6) {
         return Error.header_invalid;
     }
-    if (result.header.flags.opcode == proto.OpCode.c_close) {
+    if (result.header.topic_len == 0 and result.header.payload_len == 0) {
         return result;
     }
     try result.alloc_buffer();
