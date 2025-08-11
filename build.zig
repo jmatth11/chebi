@@ -41,22 +41,22 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(lib);
 
-    create_exe(b, target, optimize, "src/examples/simple/server.zig", "simple_server", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/simple/server.zig", "simple_server", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/simple/pub.zig", "simple_pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"examples/simple/pub.zig", "simple_pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/simple/sub.zig", "simple_sub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"examples/simple/sub.zig", "simple_sub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize, "src/examples/multiplex/server.zig", "multiplex_server", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/multiplex/server.zig", "multiplex_server", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/multiplex/pub.zig", "multiplex_pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"examples/multiplex/pub.zig", "multiplex_pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"src/examples/multiplex/sub.zig", "multiplex_sub", lib_mod) catch |err| {
+    create_exe(b, target, optimize,"examples/multiplex/sub.zig", "multiplex_sub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
 
