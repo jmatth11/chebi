@@ -5,6 +5,7 @@ const client = chebi.client;
 var cond: std.Thread.Condition = .{};
 var mutex: std.Thread.Mutex = .{};
 
+// Send simple message.
 fn write_simple(c: *client.Client) !void {
     mutex.lock();
     defer mutex.unlock();
@@ -17,6 +18,7 @@ fn write_simple(c: *client.Client) !void {
     std.debug.print("finished small buffer.\n", .{});
 }
 
+// Send 1GB of the letter E.
 fn bulk_write(c: *client.Client) !void {
     var alloc = std.heap.smp_allocator;
     var topic_name: []u8 = try alloc.alloc(u8, 4);
@@ -34,6 +36,8 @@ fn bulk_write(c: *client.Client) !void {
     );
     defer msg.deinit();
     std.debug.print("sending 1GB buffer.\n", .{});
+
+    // signal small message to start
     cond.signal();
     c.*.write_msg(msg) catch |err| {
         std.debug.print("bulk writer err: {any}.\n", .{err});
@@ -59,6 +63,7 @@ pub fn main() !void {
     );
     simple_thread.join();
     bulk_thread.join();
+    // allow messages to fully send before closing the connection.
     std.time.sleep(std.time.s_per_min * 10);
     try c.close();
 }

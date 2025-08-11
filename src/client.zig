@@ -5,14 +5,20 @@ const writer = @import("write.zig");
 const message = @import("message.zig");
 const reader = @import("reader.zig");
 
+/// Errors related to the Client.
 pub const Error = error{
+    /// The operation would have blocked.
     would_block,
 
+    /// Error with the listener setup.
     listener_setup,
+    /// Error with connecting to the server.
     server_connection,
+    /// The topic name was empty.
     topic_name_empty,
 };
 
+/// Simple Client to interact with the Server.
 pub const Client = struct {
     alloc: std.mem.Allocator,
     listener: std.c.fd_t = -1,
@@ -21,6 +27,7 @@ pub const Client = struct {
     errno: std.c.E = std.c.E.SUCCESS,
     channel: std.atomic.Value(u8),
 
+    /// Initialize Client with allocator and Address.
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
         var result: Client = .{
             .alloc = alloc,
@@ -40,6 +47,7 @@ pub const Client = struct {
         return result;
     }
 
+    /// Deinit Client internals.
     pub fn deinit(self: *Client) void {
         if (self.listener == -1) {
             return;
@@ -50,11 +58,13 @@ pub const Client = struct {
         self.packetManager.deinit();
     }
 
+    /// Connect to the server.
     pub fn connect(self: *Client) !void {
         // TODO add ability to pass connection options like max_msg_size
         try self.connect_to_server();
     }
 
+    /// Subscribe to a topic.
     pub fn subscribe(self: *Client, topic_name: []const u8) !void {
         var pack = packet.Packet.init(self.alloc);
         defer pack.deinit();
@@ -71,6 +81,7 @@ pub const Client = struct {
         };
     }
 
+    /// Unsubscribe from a topic.
     pub fn unsubscribe(self: *Client, topic_name: []const u8) !void {
         var pack = packet.Packet.init(self.alloc);
         defer pack.deinit();
@@ -87,6 +98,7 @@ pub const Client = struct {
         };
     }
 
+    /// Send a ping to the server.
     pub fn ping(self: *Client) !void {
         var pack = packet.Packet.init(self.alloc);
         defer pack.deinit();
@@ -102,12 +114,14 @@ pub const Client = struct {
         };
     }
 
+    /// Write a given payload to the topic.
     pub fn write(self: *Client, topic_name: []const u8, payload: []const u8, msg_type: message.Type) !void {
         var msg = try message.Message.init_with_body(self.alloc, topic_name, payload, msg_type);
         defer msg.deinit();
         try self.write_msg(msg);
     }
 
+    /// Write a Message structure to the server.
     pub fn write_msg(self: *Client, msg: message.Message) !void {
         const channel = self.get_channel();
         var pc = try msg.packet_collection(channel);
@@ -122,6 +136,7 @@ pub const Client = struct {
         }
     }
 
+    /// Read the next complete message from the server.
     pub fn next_msg(self: *Client) !message.Message {
         var received: bool = false;
         var msg = message.Message.init(self.alloc);
@@ -140,6 +155,7 @@ pub const Client = struct {
         return try reader.next_packet(self.alloc, self.listener);
     }
 
+    /// Close the connection.
     pub fn close(self: *Client) !void {
         var pack = packet.Packet.init(self.alloc);
         defer pack.deinit();
