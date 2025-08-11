@@ -116,8 +116,11 @@ pub const Client = struct {
 
     /// Write a given payload to the topic.
     pub fn write(self: *Client, topic_name: []const u8, payload: []const u8, msg_type: message.Type) !void {
-        var msg = try message.Message.init_with_body(self.alloc, topic_name, payload, msg_type);
-        defer msg.deinit();
+        // use arena for message allocator
+        var arena = std.heap.ArenaAllocator.init(self.alloc);
+        defer arena.deinit();
+        // TODO switch to use a no-copy version of Message
+        const msg = try message.Message.init_with_body(arena.allocator(), topic_name, payload, msg_type);
         try self.write_msg(msg);
     }
 
