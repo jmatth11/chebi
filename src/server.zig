@@ -233,7 +233,7 @@ pub const Server = struct {
     }
 
     fn server_info_packet(self: *Server) !packet.Packet {
-        const len:usize = 1 * @sizeOf(usize);
+        const len:usize = 1 + @sizeOf(usize);
         var buf: []u8 = try self.alloc.alloc(u8, len);
         var pack = packet.Packet.init(self.alloc);
         pack.header.flags.fin = true;
