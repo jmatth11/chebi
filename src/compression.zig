@@ -33,16 +33,16 @@ pub const CompressionReader = struct {
             return Error.eof;
         }
         var ending_offset = buffer.len + context.offset;
-        if (ending_offset > (context.buf.len)) {
+        if (ending_offset > context.buf.len) {
             ending_offset = context.buf.len;
         }
+        const local_slice = context.buf[context.offset..ending_offset];
         @memcpy(
-            buffer,
-            context.buf[context.offset..ending_offset],
+            buffer[0..local_slice.len],
+            local_slice,
         );
-        const n = ending_offset - context.offset;
         context.offset += buffer.len;
-        return n;
+        return local_slice.len;
     }
 
     pub fn get_reader(self: *CompressionReader) Reader {
