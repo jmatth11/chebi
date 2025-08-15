@@ -11,11 +11,13 @@ pub const CompressionType = enum(u8) {
 };
 
 pub const Error = error{
-    eof,
-    compression_read,
+    /// The given read buffer is empty.
+    compression_read_buffer_empty,
+    /// Allocating for the writer failed.
     compression_write_alloc,
 };
 
+/// Simple reader to use with compression functions.
 pub const CompressionReader = struct {
     buf: []const u8,
     offset: usize = 0,
@@ -29,8 +31,11 @@ pub const CompressionReader = struct {
         return result;
     }
     pub fn read(context: *CompressionReader, buffer: []u8) Error!usize {
+        if (buffer.len == 0) {
+            return Error.compression_read_buffer_empty;
+        }
         if (context.offset >= context.buf.len) {
-            return Error.eof;
+            return 0;
         }
         var ending_offset = buffer.len + context.offset;
         if (ending_offset > context.buf.len) {
@@ -50,6 +55,7 @@ pub const CompressionReader = struct {
     }
 };
 
+/// Simple writer to use with compression functions.
 pub const CompressionWriter = struct {
     alloc: std.mem.Allocator,
     buf: std.ArrayList(u8),
@@ -79,6 +85,7 @@ pub const CompressionWriter = struct {
     }
 };
 
+/// Compress a given slice using the compression type.
 pub fn compress(alloc: std.mem.Allocator, compression_type: CompressionType, buf: []const u8) ![]u8 {
     var local_writer = CompressionWriter.init(alloc);
     defer local_writer.deinit();
@@ -99,6 +106,7 @@ pub fn compress(alloc: std.mem.Allocator, compression_type: CompressionType, buf
     return try local_writer.buf.toOwnedSlice();
 }
 
+/// Decompress a given slice using the compression type.
 pub fn decompress(alloc: std.mem.Allocator, compression_type: CompressionType, buf: []const u8) ![]u8 {
     var local_writer = CompressionWriter.init(alloc);
     defer local_writer.deinit();
