@@ -37,18 +37,6 @@ pub const OpCode = enum(u4) {
     c_res4,
 };
 
-/// Compression Type for messages.
-pub const CompressionType = enum(u8) {
-    /// No compression supported.
-    none = 0,
-    /// raw
-    raw,
-    /// gzip
-    gzip,
-    /// zlib
-    zlib,
-};
-
 /// Server Flags to be sent back on a connection message.
 /// This structure includes flags to describe the server's info.
 pub const ServerFlags = packed struct(u8) {

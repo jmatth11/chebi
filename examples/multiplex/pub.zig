@@ -39,7 +39,7 @@ fn bulk_write(c: *client.Client) !void {
 
     // signal small message to start
     cond.signal();
-    c.*.write_msg(msg) catch |err| {
+    c.*.write_msg(&msg) catch |err| {
         std.debug.print("bulk writer err: {any}.\n", .{err});
     };
     std.debug.print("finished 1GB buffer.\n", .{});

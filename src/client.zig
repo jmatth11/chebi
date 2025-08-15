@@ -4,6 +4,7 @@ const protocol = @import("protocol.zig");
 const writer = @import("write.zig");
 const message = @import("message.zig");
 const reader = @import("reader.zig");
+const compression = @import("compression.zig");
 
 /// Errors related to the Client.
 pub const Error = error{
@@ -33,7 +34,7 @@ pub const Client = struct {
     errno: std.c.E = std.c.E.SUCCESS,
     channel: std.atomic.Value(u8),
     limit: ?usize = null,
-    compression: protocol.CompressionType = .none,
+    compression: compression.CompressionType = .raw,
 
     /// Initialize Client with allocator and Address.
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
@@ -164,12 +165,12 @@ pub const Client = struct {
         // use arena for message allocator
         var arena = std.heap.ArenaAllocator.init(self.alloc);
         defer arena.deinit();
-        const msg = message.Message.init_with_body_no_copy(arena.allocator(), topic_name, payload, msg_type);
-        try self.write_msg(msg);
+        var msg = message.Message.init_with_body_no_copy(arena.allocator(), topic_name, payload, msg_type);
+        try self.write_msg(&msg);
     }
 
     /// Write a Message structure to the server.
-    pub fn write_msg(self: *Client, msg: message.Message) !void {
+    pub fn write_msg(self: *Client, msg: *message.Message) !void {
         if (self.limit) |size_limit| {
             if (msg.payload) |payload| {
                 if (payload.len > size_limit) {
@@ -177,8 +178,8 @@ pub const Client = struct {
                 }
             }
         }
-        if (self.compression != .none and msg.msg_type == .compressed) {
-            msg.set_compression(self.compression);
+        if (self.compression != .raw and msg.msg_type == .compressed) {
+            msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
         var pc = try msg.packet_collection(channel);
@@ -202,7 +203,7 @@ pub const Client = struct {
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
                 received = true;
-                if (self.compression != .none and c.is_compressed()) {
+                if (self.compression != .raw and c.is_compressed()) {
                     msg.set_compression(self.compression);
                 }
                 try msg.from_packet_collection(c);

@@ -1,6 +1,7 @@
 const std = @import("std");
 const proto = @import("protocol.zig");
 const packet = @import("packet.zig");
+const compression = @import("compression.zig");
 
 // The TCP MTU is 1500 so we stay within a safe limit.
 const max_msg_size: u16 = 1024;
@@ -35,7 +36,7 @@ pub const Message = struct {
 
     /// Compression type to use.
     /// This will typically be set by the client.
-    compression_type: proto.CompressionType = .none,
+    compression_type: compression.CompressionType = .raw,
 
     pub fn init(alloc: std.mem.Allocator) Message {
         const m: Message = .{
@@ -63,7 +64,7 @@ pub const Message = struct {
     /// This method also sets the message type to compressed.
     /// This does not need to be called before sending to the client.
     /// Setting the message type to .compressed will tell the client to set the compression.
-    pub fn set_compression(self: *Message, compression_type: proto.CompressionType) void {
+    pub fn set_compression(self: *Message, compression_type: compression.CompressionType) void {
         self.msg_type = .compressed;
         self.compression_type = compression_type;
     }
@@ -93,7 +94,6 @@ pub const Message = struct {
         if (self.payload) |p| {
             self.alloc.free(p);
         }
-        // TODO implement decompression
         const full_size: usize = pc.payload_size();
         const payload = try self.alloc.alloc(u8, full_size);
         var offset: usize = 0;
@@ -106,7 +106,16 @@ pub const Message = struct {
             @memcpy(payload[offset..offset_len], try pack.get_payload());
             offset += len;
         }
-        self.payload = payload;
+        if (self.compression_type != .raw and pc.is_compressed()) {
+            defer self.alloc.free(payload);
+            self.payload = try compression.decompress(
+                self.alloc,
+                self.compression_type,
+                payload,
+            );
+        } else {
+            self.payload = payload;
+        }
         errdefer self.alloc.free(self.payload.?);
         self.topic = try self.alloc.dupe(u8, topic_name);
         self.msg_type = switch (pc.opcode) {
@@ -124,8 +133,12 @@ pub const Message = struct {
         // TODO implement compression
         var is_single_pack: bool = true;
         if (self.payload) |body| {
-            if (body.len > max_msg_size) {
-                try self.generate_multi_packet(topic_name, body, channel, &result);
+            var local_body = body;
+            if (self.compression_type != .raw) {
+                local_body = try compression.compress(self.alloc, self.compression_type, local_body);
+            }
+            if (local_body.len > max_msg_size) {
+                try self.generate_multi_packet(topic_name, local_body, channel, &result);
                 is_single_pack = false;
             }
         }
@@ -149,12 +162,17 @@ pub const Message = struct {
         var pack = packet.Packet.init(self.alloc);
         pack.header.flags.fin = true;
         pack.header.flags.opcode = switch (self.msg_type) {
-            Type.bin => proto.OpCode.nc_bin,
+            Type.bin, Type.compressed => proto.OpCode.nc_bin,
             Type.text => proto.OpCode.nc_text,
         };
         pack.header.info.channel = channel;
         if (body) |b| {
-            _ = try pack.set_body(topic_name, b);
+            var local_body = b;
+            if (self.compression_type != .raw) {
+                pack.header.info.compressed = true;
+                local_body = try compression.compress(self.alloc, self.compression_type, local_body);
+            }
+            _ = try pack.set_body(topic_name, local_body);
         } else {
             _ = try pack.set_topic(topic_name);
         }
@@ -170,7 +188,7 @@ pub const Message = struct {
             if (offset_len >= body_len) {
                 pack.header.flags.fin = true;
                 pack.header.flags.opcode = switch (self.msg_type) {
-                    Type.bin => proto.OpCode.nc_bin,
+                    Type.bin, Type.compressed => proto.OpCode.nc_bin,
                     Type.text => proto.OpCode.nc_text,
                 };
                 offset_len = body_len;
@@ -179,6 +197,7 @@ pub const Message = struct {
                 pack.header.flags.opcode = proto.OpCode.nc_continue;
             }
             pack.header.info.channel = channel;
+            pack.header.info.compressed = self.compression_type != .raw;
             _ = try pack.set_body(topic_name, body[offset..offset_len]);
             try result.add(pack);
             offset += max_msg_size;

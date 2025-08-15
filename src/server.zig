@@ -5,6 +5,7 @@ const reader = @import("reader.zig");
 const protocol = @import("protocol.zig");
 const packet = @import("packet.zig");
 const handler = @import("handler.zig");
+const compression = @import("compression.zig");
 const EPOLL = std.os.linux.EPOLL;
 
 const poll_ctx = poll.Poll(100);
@@ -28,7 +29,7 @@ pub const Server = struct {
     errno: std.c.E,
     running: bool = false,
     msg_limit: ?usize = null,
-    compression: protocol.CompressionType = .gzip,
+    compression: compression.CompressionType = .gzip,
     version: u3 = 0,
 
     /// Initialize with alloator and port number.
@@ -243,7 +244,7 @@ pub const Server = struct {
         pack.header.topic_len = 0;
         var flags: protocol.ServerFlags = .{};
         var offset: usize = 1;
-        if (self.compression != .none) {
+        if (self.compression != .raw) {
             buf[1] = @intFromEnum(self.compression);
             offset += 1;
         }
@@ -251,7 +252,7 @@ pub const Server = struct {
             flags.msg_limit = true;
             std.mem.writeInt(
                 usize,
-                buf[2..9],
+                buf[2..10],
                 limit,
                 .little,
             );
