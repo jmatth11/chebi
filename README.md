@@ -26,7 +26,119 @@ This allows large messages to not clog up the pipeline if smaller messages can b
 
 ## Examples
 
-You can find different examples in the `examples/` folder.
+You can find all examples in the `examples/` folder.
+
+Currently there are examples for:
+
+- simple.
+- multiplexed messages.
+- compression used.
+
+### Example Server
+
+A simple server application.
+
+```zig
+const std = @import("std");
+const chebi = @import("chebi");
+const server = chebi.server;
+
+var s: server.Server = undefined;
+
+export fn shutdown(_: i32) void {
+   s.stop();
+   s.deinit();
+}
+
+pub fn main() !void {
+    // initialize our server on the port 3000
+    s = try server.Server.init(std.heap.smp_allocator, 3000);
+
+    // setup a signal interrupt callback
+    std.posix.sigaction(std.posix.SIG.INT, &.{
+        .handler = .{ .handler = shutdown },
+        .mask = std.posix.empty_sigset,
+        .flags = 0,
+    }, null);
+
+    // start the server listener.
+    s.listen() catch |err| {
+        const errno = std.posix.errno(-1);
+        std.debug.print("errno: {any}\n", .{errno});
+        std.debug.print("err = {any}\n", .{err});
+    };
+}
+```
+
+### Example Subscriber
+
+A simple subscriber.
+
+```zig
+const std = @import("std");
+const chebi = @import("chebi");
+const client = chebi.client;
+
+pub fn main() !void {
+    // Create our Connection Address.
+    const addr = std.net.Address.initIp4([4]u8 {127,0,0,1}, 3000);
+
+    // Initialize our client with the connection address.
+    var c = try client.Client.init(std.heap.smp_allocator, addr);
+    defer c.deinit();
+
+    // Perform connection call.
+    // This connects to the server and grabs server information,
+    // like compression algorithm and msg size limit.
+    try c.connect();
+
+    // Subscribe to the "test" topic.
+    try c.subscribe("test");
+
+    // Wait for and grab the next message from the server.
+    const msg = try c.next_msg();
+
+    // print out info.
+    std.debug.print("topic: {s}\n", .{msg.topic.?});
+    std.debug.print("msg: {s}\n", .{msg.payload.?});
+}
+```
+
+### Example Publisher
+
+A simple publisher.
+
+```zig
+const std = @import("std");
+const chebi = @import("chebi");
+const client = chebi.client;
+
+pub fn main() !void {
+    // Create our Connection Address.
+    const addr = std.net.Address.initIp4([4]u8 {127,0,0,1}, 3000);
+
+    // Initialize our client with the connection address.
+    var c = try client.Client.init(std.heap.smp_allocator, addr);
+    defer c.deinit();
+
+    // Perform connection call.
+    // This connects to the server and grabs server information,
+    // like compression algorithm and msg size limit.
+    try c.connect();
+
+    // Subscribe to the "test" topic.
+    try c.subscribe("test");
+
+    // Write text type message to the "test" topic.
+    try c.write("test", "hello from pub", chebi.message.Type.text);
+
+    // Ensure the message had enough time to send.
+    std.time.sleep(std.time.ms_per_s * 5);
+
+    // close the client.
+    try c.close();
+}
+```
 
 ## Simple Demo
 
