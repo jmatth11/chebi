@@ -28,6 +28,7 @@ pub const Server = struct {
     errno: std.c.E,
     running: bool = false,
     msg_limit: ?usize = null,
+    compression: protocol.CompressionType = .gzip,
     version: u3 = 0,
 
     /// Initialize with alloator and port number.
@@ -233,7 +234,7 @@ pub const Server = struct {
     }
 
     fn server_info_packet(self: *Server) !packet.Packet {
-        const len:usize = 1 + @sizeOf(usize);
+        const len:usize = 2 + @sizeOf(usize);
         var buf: []u8 = try self.alloc.alloc(u8, len);
         var pack = packet.Packet.init(self.alloc);
         pack.header.flags.fin = true;
@@ -242,17 +243,20 @@ pub const Server = struct {
         pack.header.topic_len = 0;
         var flags: protocol.ServerFlags = .{};
         var offset: usize = 1;
+        if (self.compression != .none) {
+            buf[1] = @intFromEnum(self.compression);
+            offset += 1;
+        }
         if (self.msg_limit) |limit| {
             flags.msg_limit = true;
             std.mem.writeInt(
                 usize,
-                buf[1..9],
+                buf[2..9],
                 limit,
                 .little,
             );
             offset += @sizeOf(usize);
         }
-
         buf[0] = flags.pack();
         pack.body = buf;
         pack.header.payload_len = @intCast(pack.body.?.len);

@@ -17,15 +17,25 @@ pub const Type = enum {
     text,
     /// Binary format.
     bin,
+    /// Compressed format. Uses the compression_type value.
+    /// Use this type to let the client assign the compression type properly.
+    compressed,
 };
 
 /// Message structure.
 /// Contains type, topic name, and payload.
 pub const Message = struct {
     alloc: std.mem.Allocator,
+    /// The message type.
     msg_type: Type = .text,
+    /// The topic name.
     topic: ?[]const u8 = null,
+    /// The payload.
     payload: ?[]const u8 = null,
+
+    /// Compression type to use.
+    /// This will typically be set by the client.
+    compression_type: proto.CompressionType = .none,
 
     pub fn init(alloc: std.mem.Allocator) Message {
         const m: Message = .{
@@ -47,6 +57,15 @@ pub const Message = struct {
         result.payload = payload;
         result.msg_type = msg_type;
         return result;
+    }
+
+    /// Set the compression type.
+    /// This method also sets the message type to compressed.
+    /// This does not need to be called before sending to the client.
+    /// Setting the message type to .compressed will tell the client to set the compression.
+    pub fn set_compression(self: *Message, compression_type: proto.CompressionType) void {
+        self.msg_type = .compressed;
+        self.compression_type = compression_type;
     }
 
     pub fn set_body(self: *Message, topic_name: []const u8, payload: []const u8) !void {
@@ -74,6 +93,7 @@ pub const Message = struct {
         if (self.payload) |p| {
             self.alloc.free(p);
         }
+        // TODO implement decompression
         const full_size: usize = pc.payload_size();
         const payload = try self.alloc.alloc(u8, full_size);
         var offset: usize = 0;
@@ -101,6 +121,7 @@ pub const Message = struct {
         }
         const topic_name = self.topic.?;
         var result = packet.PacketCollection.init(self.alloc);
+        // TODO implement compression
         var is_single_pack: bool = true;
         if (self.payload) |body| {
             if (body.len > max_msg_size) {

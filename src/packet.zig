@@ -267,6 +267,14 @@ pub const PacketCollection = struct {
         return result;
     }
 
+    /// Is the collection of packets using compression.
+    pub fn is_compressed(self: *const PacketCollection) bool {
+        if (self.packets.items.len > 0) {
+            return self.packets.items[0].header.info.compressed;
+        }
+        return false;
+    }
+
     /// Deinitialize internals.
     pub fn deinit(self: *PacketCollection) void {
         for (self.packets.items) |*item| {

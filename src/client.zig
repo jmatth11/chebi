@@ -33,6 +33,7 @@ pub const Client = struct {
     errno: std.c.E = std.c.E.SUCCESS,
     channel: std.atomic.Value(u8),
     limit: ?usize = null,
+    compression: protocol.CompressionType = .none,
 
     /// Initialize Client with allocator and Address.
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
@@ -89,6 +90,10 @@ pub const Client = struct {
             var server_flags: protocol.ServerFlags = .{};
             server_flags.unpack(body[0]);
             var offset: usize = 1;
+            if (server_flags.compression) {
+                self.compression = @enumFromInt(body[offset]);
+                offset += 1;
+            }
             if (server_flags.msg_limit) {
                 const msg_limit_size: usize = @sizeOf(usize);
                 if (body.len < (offset + msg_limit_size)) {
@@ -172,6 +177,9 @@ pub const Client = struct {
                 }
             }
         }
+        if (self.compression != .none and msg.msg_type == .compressed) {
+            msg.set_compression(self.compression);
+        }
         const channel = self.get_channel();
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
@@ -194,6 +202,9 @@ pub const Client = struct {
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
                 received = true;
+                if (self.compression != .none and c.is_compressed()) {
+                    msg.set_compression(self.compression);
+                }
                 try msg.from_packet_collection(c);
             }
         }
