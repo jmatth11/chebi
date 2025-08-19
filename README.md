@@ -16,13 +16,39 @@ The standard capabilities are supported:
 ## Compression
 
 The spec contains a flag for compression, which you can toggle on and off.
-No compression is implemented out-of-the-box yet. But this is planned to be handled
-automatically for the clients.
+
+Supports:
+
+- gzip
+- zlib
 
 ## Multiplexed Messaging
 
 The spec allows for messages to be grouped by top-down of topic, client socket, and message channel.
 This allows large messages to not clog up the pipeline if smaller messages can be processed quicker.
+
+## Installation & Setup
+
+### Install
+
+Add to your project like so.
+```bash
+zig fetch --save "git+https://github.com/jmatth11/chebi#master"
+```
+
+### Setup
+
+Place this in your `build.zig`.
+
+```zig
+const chebi = b.dependency("chebi", .{
+    .target = target,
+    .optimize = optimize,
+});
+
+// the executable from your call to b.addExecutable(...)
+exe.root_module.addImport("chebi", chebi.module("chebi"));
+```
 
 ## Examples
 
