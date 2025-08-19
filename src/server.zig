@@ -247,6 +247,8 @@ pub const Server = struct {
         if (self.compression != .raw) {
             buf[1] = @intFromEnum(self.compression);
             offset += 1;
+        } else {
+            flags.compression = false;
         }
         if (self.msg_limit) |limit| {
             flags.msg_limit = true;
