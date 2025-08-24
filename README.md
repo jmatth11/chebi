@@ -15,12 +15,11 @@ The standard capabilities are supported:
 
 ## Compression
 
-The spec contains a flag for compression, which you can toggle on and off.
+!! warning !!
+Compression is currently broken since the
+zig std library has removed it (for the time being).
 
-Supports:
-
-- gzip
-- zlib
+Hopefully I will have a resolution for this soon.
 
 ## Multiplexed Messaging
 
