@@ -1,6 +1,13 @@
 const std = @import("std");
 
-fn create_exe(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, path: []const u8, name: []const u8, lib_mod: *std.Build.Module) !void {
+fn create_exe(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    path: []const u8,
+    name: []const u8,
+    lib_mod: *std.Build.Module,
+) !void {
     const exe_mod = b.createModule(.{
         .root_source_file = b.path(path),
         .target = target,
@@ -44,26 +51,30 @@ pub fn build(b: *std.Build) void {
     create_exe(b, target, optimize, "examples/server/simple.zig", "simple_server", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"examples/pub/simple.zig", "simple_pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/pub/simple.zig", "simple_pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"examples/pub/multiplex.zig", "multiplex_pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/pub/multiplex.zig", "multiplex_pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"examples/pub/compression.zig", "compression_pub", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/pub/compression.zig", "compression_pub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"examples/sub/simple.zig", "simple_sub", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/sub/simple.zig", "simple_sub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
-    create_exe(b, target, optimize,"examples/sub/loop.zig", "loop_sub", lib_mod) catch |err| {
+    create_exe(b, target, optimize, "examples/sub/loop.zig", "loop_sub", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
 
-    const lib_unit_tests = b.addTest(.{
+    const lib_test_mod = b.createModule(.{
         .root_source_file = b.path("src/root.test.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    const lib_unit_tests = b.addTest(.{
+        .name = "test",
+        .root_module = lib_test_mod,
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);

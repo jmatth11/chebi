@@ -3,6 +3,7 @@ const chebi = @import("chebi");
 const server = chebi.server;
 
 var s: server.Server = undefined;
+const empty_sig: [16]c_ulong = @splat(0);
 
 export fn shutdown(_: i32) void {
    s.stop();
@@ -11,9 +12,9 @@ export fn shutdown(_: i32) void {
 
 pub fn main() !void {
     s = try server.Server.init(std.heap.smp_allocator, 3000);
-    std.posix.sigaction(std.posix.SIG.INT, &.{
+    _ = std.c.sigaction(std.c.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
-        .mask = std.posix.empty_sigset,
+        .mask = empty_sig,
         .flags = 0,
     }, null);
     s.listen() catch |err| {

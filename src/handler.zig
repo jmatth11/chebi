@@ -3,6 +3,8 @@ const packet = @import("packet.zig");
 const writer = @import("write.zig");
 const manager = @import("manager.zig");
 
+const HandlerInfoList = std.array_list.Managed(PacketHandlerInfo);
+
 /// Errors with the packet handler.
 pub const Error = error{
     /// This is issued if a would_block occurs.
@@ -17,7 +19,7 @@ pub const PacketHandlerInfo = struct {
 
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
-    collection: std.ArrayList(PacketHandlerInfo),
+    collection: HandlerInfoList,
     //mutex: std.Thread.Mutex,
     //pool: std.Thread.Pool,
 
@@ -33,7 +35,7 @@ pub const PacketHandler = struct {
         //try std.Thread.Pool.init(&pool, options);
         return .{
             .alloc = alloc,
-            .collection = std.ArrayList(PacketHandlerInfo).init(alloc),
+            .collection = HandlerInfoList.init(alloc),
             //.pool = pool,
             //.mutex = .{},
         };
@@ -55,7 +57,7 @@ pub const PacketHandler = struct {
             const collection = info.collection;
             const from = info.from;
             const topic = collection.topic;
-            const clients_opt: ?std.ArrayList(std.c.fd_t) = mapping.get(topic);
+            const clients_opt: ?manager.SocketList = mapping.get(topic);
             if (clients_opt) |clients| {
                 for (collection.packets.items) |payload| {
                     for (clients.items) |socket| {

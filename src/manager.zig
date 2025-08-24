@@ -8,20 +8,23 @@ pub const Error = error{
     client_dne,
 };
 
-pub const TopicMapping = std.StringHashMap(std.ArrayList(std.c.fd_t));
+pub const SocketList = std.array_list.Managed(std.c.fd_t);
+pub const TopicList = std.array_list.Managed([]const u8);
+
+pub const TopicMapping = std.StringHashMap(SocketList);
 
 pub const ClientInfo = struct {
     alloc: std.mem.Allocator,
     fd: std.c.fd_t,
     last_active: std.time.Instant,
-    topics: std.ArrayList([]const u8),
+    topics: TopicList,
 
     pub fn init(alloc: std.mem.Allocator, fd: std.c.fd_t) !ClientInfo {
         return .{
             .alloc = alloc,
             .fd = fd,
             .last_active = try std.time.Instant.now(),
-            .topics = std.ArrayList([]const u8).init(alloc),
+            .topics = TopicList.init(alloc),
         };
     }
 
@@ -53,7 +56,7 @@ pub const Manager = struct {
             return;
         }
         const dup_key: []const u8 = try self.alloc.dupe(u8, topic);
-        try self.topics.put(dup_key, std.ArrayList(std.c.fd_t).init(self.alloc));
+        try self.topics.put(dup_key, SocketList.init(self.alloc));
     }
 
     /// Add a client.
@@ -93,7 +96,7 @@ pub const Manager = struct {
         }
         const topic_name: []const u8 = self.topics.getKey(topic).?;
         try client_info.topics.append(topic_name);
-        var topic_mapping: *std.ArrayList(std.c.fd_t) = self.topics.getPtr(topic).?;
+        var topic_mapping: *SocketList = self.topics.getPtr(topic).?;
         try topic_mapping.append(client);
     }
 
@@ -139,7 +142,7 @@ pub const Manager = struct {
         const client_info: ?*ClientInfo = self.clients.getPtr(client);
         if (client_info) |ct| {
             for (ct.topics.items) |item| {
-                var topic_mapping: *std.ArrayList(std.c.fd_t) = self.topics.getPtr(item).?;
+                var topic_mapping: *SocketList = self.topics.getPtr(item).?;
                 var idx: usize = 0;
                 var found: bool = false;
                 for (topic_mapping.items, 0..) |tm_item, i| {
@@ -160,7 +163,7 @@ pub const Manager = struct {
 
     /// Grab the list of clients for a specific topic.
     pub fn client_list(self: *Manager, topic: []const u8) Error![]const std.c.fd_t {
-        const topic_mapping: ?std.ArrayList(std.c.fd_t) = self.topics.get(topic);
+        const topic_mapping: ?SocketList = self.topics.get(topic);
         if (topic_mapping) |tm| {
             return tm.items;
         }

@@ -3,6 +3,7 @@ const proto = @import("protocol.zig");
 
 pub const ClientChannel = std.AutoHashMap(std.c.fd_t, ChannelCollection);
 pub const ChannelPackets = std.AutoHashMap(u7, PacketCollection);
+const PacketList = std.array_list.Managed(Packet);
 
 /// Packet specific errors.
 pub const Error = error{
@@ -207,7 +208,7 @@ pub const PacketCollection = struct {
     version: u8 = 0,
     channel: u8 = 0,
     topic: []const u8 = undefined,
-    packets: std.ArrayList(Packet) = undefined,
+    packets: PacketList = undefined,
     limit: ?usize = null,
 
     /// Init an empty packet collection.
@@ -215,7 +216,7 @@ pub const PacketCollection = struct {
         var pc: PacketCollection = .{
             .alloc = alloc,
         };
-        pc.packets = std.ArrayList(Packet).init(alloc);
+        pc.packets = PacketList.init(alloc);
         return pc;
     }
 
@@ -381,6 +382,27 @@ pub const PacketManager = struct {
                 std.AutoHashMap(std.c.fd_t, ChannelCollection),
             ).init(alloc),
         };
+    }
+
+    pub fn debug(self: *PacketManager, topic: []const u8) void {
+        const mapping: ?*std.AutoHashMap(std.c.fd_t, ChannelCollection) = self.collector.getPtr(topic);
+        if (mapping) |map_entry| {
+            var it = map_entry.valueIterator();
+            while (it.next()) |chan| {
+                var chan_it = chan.channels.valueIterator();
+                while (chan_it.next()) |coll| {
+                    std.debug.print(
+                        "topic:{s}, channel:{}, payload_size:{}, packet.len:{}\n",
+                        .{
+                            coll.topic,
+                            coll.channel,
+                            coll.payload_size(),
+                            coll.packets.items.len,
+                        },
+                    );
+                }
+            }
+        }
     }
 
     /// Store the incoming packet for a client.

@@ -53,6 +53,7 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
         return Error.errno;
     }
     if (recv_len < result.body.?.len) {
+        std.debug.print("recv_len = {}; body.len = {}\n", .{recv_len, result.body.?.len});
         return Error.payload_len_invalid;
     }
     return result;

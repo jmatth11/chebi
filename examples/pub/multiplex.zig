@@ -10,7 +10,11 @@ fn write_simple(c: *client.Client) !void {
     mutex.lock();
     defer mutex.unlock();
     cond.wait(&mutex);
-    //std.time.sleep(std.time.s_per_min * 1);
+    const wait_info: std.c.timespec = .{
+        .sec = 0,
+        .nsec = std.time.ms_per_s * 200,
+    };
+    _ = std.c.nanosleep(&wait_info, null);
     std.debug.print("sending small buffer.\n", .{});
     c.*.write("test", "hello from pub", chebi.message.Type.text) catch |err| {
         std.debug.print("simple write err: {any}.\n", .{err});
@@ -64,6 +68,10 @@ pub fn main() !void {
     simple_thread.join();
     bulk_thread.join();
     // allow messages to fully send before closing the connection.
-    std.time.sleep(std.time.s_per_min * 10);
+    const wait_info: std.c.timespec = .{
+        .sec = 5,
+        .nsec = 0,
+    };
+    _ = std.c.nanosleep(&wait_info, null);
     try c.close();
 }

@@ -1,2 +1,4 @@
 .zig-cache
 zig-out
+# test file for multiplex example
+sub.out

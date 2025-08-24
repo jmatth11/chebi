@@ -9,6 +9,10 @@ pub fn main() !void {
     try c.connect();
     try c.subscribe("test");
     try c.write("test", "hello from pub", chebi.message.Type.text);
-    std.time.sleep(std.time.ms_per_s * 5);
+    const wait_info: std.c.timespec = .{
+        .sec = 1,
+        .nsec = 0,
+    };
+    _ = std.c.nanosleep(&wait_info, null);
     try c.close();
 }
