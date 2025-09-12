@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// Create executable function.
 fn create_exe(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
@@ -39,15 +40,18 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // create static lib
     const lib = b.addLibrary(.{
         .linkage = .static,
         .name = "chebi",
         .root_module = lib_mod,
     });
+    // we use LibC stuff currently
     lib.linkLibC();
 
     b.installArtifact(lib);
 
+    // creating example apps
     create_exe(b, target, optimize, "examples/server/simple.zig", "simple_server", lib_mod) catch |err| {
         std.debug.print("error: {s}\n", .{err});
     };
