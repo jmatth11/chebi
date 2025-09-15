@@ -77,6 +77,7 @@ pub const PacketHandler = struct {
         const try_again_list_n: usize = self.try_again_list.items.len;
         for (try_again_list_n..0) |index| {
             var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
+            // TODO check if it's actually incrementing
             tmp_item.attempts += 1;
             const collection = tmp_item.packet.collection;
             const topic = collection.topic;
@@ -93,6 +94,9 @@ pub const PacketHandler = struct {
             }
             // remove if processed or if it's the third attempt
             if (remove or tmp_item.attempts == 3) {
+                if (tmp_item.attempts == 3) {
+                    std.debug.print("dropping message from {}\n", .{tmp_item.packet.from});
+                }
                 _ = self.try_again_list.swapRemove(index);
                 tmp_item.packet.collection.deinit();
             }
