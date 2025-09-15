@@ -3,7 +3,13 @@ const packet = @import("packet.zig");
 const writer = @import("write.zig");
 const manager = @import("manager.zig");
 
+const TryAgainInfo = struct {
+    attempts: usize = 0,
+    packet: PacketHandlerInfo,
+};
+
 const HandlerInfoList = std.array_list.Managed(PacketHandlerInfo);
+const TryAgainList = std.array_list.Managed(TryAgainInfo);
 
 /// Errors with the packet handler.
 pub const Error = error{
@@ -20,6 +26,7 @@ pub const PacketHandlerInfo = struct {
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
     collection: HandlerInfoList,
+    try_again_list: TryAgainList,
     //mutex: std.Thread.Mutex,
     //pool: std.Thread.Pool,
 
@@ -36,6 +43,7 @@ pub const PacketHandler = struct {
         return .{
             .alloc = alloc,
             .collection = HandlerInfoList.init(alloc),
+            .try_again_list = TryAgainList.init(alloc),
             //.pool = pool,
             //.mutex = .{},
         };
@@ -51,26 +59,64 @@ pub const PacketHandler = struct {
         try self.collection.append(entry);
     }
 
+    fn process_single(self: *PacketHandler, info: *const PacketHandlerInfo, clients: manager.SocketList) !void {
+        const collection = info.collection;
+        const from = info.from;
+        for (collection.packets.items) |payload| {
+            for (clients.items) |socket| {
+                // skip ourselves
+                if (from == socket) {
+                    return;
+                }
+                try self.send(socket, payload);
+            }
+        }
+    }
+
     pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
+        const try_again_list_n: usize = self.try_again_list.items.len;
+        for (try_again_list_n..0) |index| {
+            var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
+            tmp_item.attempts += 1;
+            const collection = tmp_item.packet.collection;
+            const topic = collection.topic;
+            const clients_opt: ?manager.SocketList = mapping.get(topic);
+            var remove: bool = true;
+            if (clients_opt) |clients| {
+                self.process_single(&tmp_item.packet, clients) catch |err| {
+                    if (err == Error.try_again) {
+                        remove = false;
+                    } else {
+                        return err;
+                    }
+                };
+            }
+            // remove if processed or if it's the third attempt
+            if (remove or tmp_item.attempts == 3) {
+                _ = self.try_again_list.swapRemove(index);
+                tmp_item.packet.collection.deinit();
+            }
+        }
         // TODO this is MVP approach, revisit to parallelize
         for (self.collection.items) |*info| {
             const collection = info.collection;
-            const from = info.from;
             const topic = collection.topic;
             const clients_opt: ?manager.SocketList = mapping.get(topic);
+            var should_deinit: bool = true;
             if (clients_opt) |clients| {
-                for (collection.packets.items) |payload| {
-                    for (clients.items) |socket| {
-                        // skip ourselves
-                        if (from == socket) {
-                            continue;
-                        }
-                        try self.send(socket, payload);
+                self.process_single(info, clients) catch |err| {
+                    if (err == Error.try_again) {
+                        try self.try_again_list.append(.{ .packet = info.* });
+                        should_deinit = false;
+                    } else {
+                        return err;
                     }
-                }
+                };
             }
-            // free collection once done
-            info.*.collection.deinit();
+            if (should_deinit) {
+                // free collection once done
+                info.*.collection.deinit();
+            }
         }
         // reset collection after processing
         try self.collection.resize(0);
@@ -92,6 +138,11 @@ pub const PacketHandler = struct {
         if (self.collection.items.len > 0) {
             for (self.collection.items) |*item| {
                 item.*.collection.deinit();
+            }
+        }
+        if (self.try_again_list.items.len > 0) {
+            for (self.try_again_list.items) |*item| {
+                item.*.packet.collection.deinit();
             }
         }
         self.collection.deinit();

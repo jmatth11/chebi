@@ -18,16 +18,21 @@ fn write_simple(c: *client.Client) !void {
         .nsec = 0,
     };
 
-    std.debug.print("sending {} small buffers.\n", .{n});
+    std.debug.print("pub1 sending {} small buffers.\n", .{n});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
-            c.*.write("test 1", "hello from pub", chebi.message.Type.text) catch |err| {
-                std.debug.print("simple write err: {any}.\n", .{err});
+            c.*.write("test 1", "hello from pub1", chebi.message.Type.text) catch |err| {
+                if (err == client.Error.errno) {
+                    std.debug.print("pub1 posix.errno: {}\n", .{std.posix.errno(-1)});
+                } else  {
+                    std.debug.print("pub1 simple write err: {any}.\n", .{err});
+                }
+                return;
             };
         }
     }
-    std.debug.print("finished small buffer.\n", .{});
+    std.debug.print("pub1 finished small buffer.\n", .{});
 }
 
 // Send 1GB of the letter E.
@@ -55,17 +60,22 @@ fn bulk_write(c: *client.Client) !void {
         chebi.message.Type.text,
     );
     defer msg.deinit();
-    std.debug.print("sending 1GB buffer.\n", .{});
 
+    std.debug.print("pub1 sending 1GB buffer.\n", .{});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
             c.*.write_msg(&msg) catch |err| {
-                std.debug.print("bulk writer err: {any}.\n", .{err});
+                if (err == client.Error.errno) {
+                    std.debug.print("pub1 posix.errno: {}\n", .{std.posix.errno(-1)});
+                } else  {
+                    std.debug.print("pub1 bulk writer err: {any}.\n", .{err});
+                }
+                return;
             };
         }
     }
-    std.debug.print("finished 1GB buffer.\n", .{});
+    std.debug.print("pub1 finished 1GB buffer.\n", .{});
 }
 
 pub fn main() !void {
@@ -77,6 +87,7 @@ pub fn main() !void {
     const addr = std.net.Address.initIp4([4]u8{ 127, 0, 0, 1 }, 3000);
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
+    c.id = 1;
     try c.connect();
     try c.subscribe("test 1");
     const simple_thread = try std.Thread.spawn(

@@ -10,6 +10,8 @@ const compression = @import("compression.zig");
 pub const Error = error{
     /// The operation would have blocked.
     would_block,
+    /// Rethrowing errno.
+    errno,
 
     /// Error with the listener setup.
     listener_setup,
@@ -27,6 +29,7 @@ pub const Error = error{
 
 /// Simple Client to interact with the Server.
 pub const Client = struct {
+    id: usize = 0,
     alloc: std.mem.Allocator,
     listener: std.c.fd_t = -1,
     srv_addr: std.net.Address,
@@ -182,12 +185,15 @@ pub const Client = struct {
             msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
+        std.debug.print("id - {}; topic - {s}; channel - {}\n", .{self.id, msg.topic.?, channel});
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
         for (pc.packets.items) |pack| {
             writer.write_packet(self.alloc, self.listener, pack) catch |err| {
                 if (err == writer.Error.would_block) {
                     return Error.would_block;
+                } else if (err == writer.Error.errno) {
+                    return Error.errno;
                 }
                 return err;
             };

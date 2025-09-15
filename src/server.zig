@@ -218,7 +218,7 @@ pub const Server = struct {
                     }
                 },
                 else => {
-                    std.debug.print("unsupported opcode: {any}\n", .{packet_entry.header.flags.opcode});
+                    std.debug.print("unsupported opcode: {any}; from = {any}\n", .{packet_entry.header.flags.opcode, fd});
                 },
             }
             if (release_packet_entry) {

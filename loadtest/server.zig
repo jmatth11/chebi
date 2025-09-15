@@ -22,4 +22,5 @@ pub fn main() !void {
         std.debug.print("errno: {any}\n", .{errno});
         std.debug.print("err = {any}\n", .{err});
     };
+    std.debug.print("--- SERVER CLOSED ---", .{});
 }

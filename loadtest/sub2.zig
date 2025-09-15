@@ -20,12 +20,12 @@ pub fn main() !void {
         var msg = try c.next_msg();
         defer msg.deinit();
         msg_count = msg_count + 1;
-        std.debug.print("topic: {s}\n", .{msg.topic.?});
+        std.debug.print("sub2 topic: {s}\n", .{msg.topic.?});
         if (msg.payload.?.len < 50) {
-            std.debug.print("msg: {s}\n", .{msg.payload.?});
+            std.debug.print("sub2 msg: {s}\n", .{msg.payload.?});
         } else {
             if (msg.payload) |payload| {
-                std.debug.print("large file recv: size({}).\n", .{payload.len});
+                std.debug.print("sub2 large file recv: size({}).\n", .{payload.len});
             }
         }
         if (msg_count == 100) {
