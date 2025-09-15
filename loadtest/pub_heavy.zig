@@ -2,36 +2,44 @@ const std = @import("std");
 const chebi = @import("chebi");
 const client = chebi.client;
 
-var cond: std.Thread.Condition = .{};
-var mutex: std.Thread.Mutex = .{};
+const n: comptime_int = 100;
 
 // Send simple message.
+// Sending to topic "test 1"
 fn write_simple(c: *client.Client) !void {
-    mutex.lock();
-    defer mutex.unlock();
-    cond.wait(&mutex);
     const wait_info: std.c.timespec = .{
-        .sec = 0,
-        .nsec = std.time.ms_per_s * 200,
+        .sec = 1,
+        .nsec = 0,
     };
-    _ = std.c.nanosleep(&wait_info, null);
-    std.debug.print("sending small buffer.\n", .{});
-    c.*.write("test", "hello from pub", chebi.message.Type.text) catch |err| {
-        std.debug.print("simple write err: {any}.\n", .{err});
-    };
+
+    std.debug.print("sending {} small buffers.\n", .{n});
+    for (0..n) |_| {
+        _ = std.c.nanosleep(&wait_info, null);
+        c.*.write("test 1", "hello from pub", chebi.message.Type.text) catch |err| {
+            std.debug.print("simple write err: {any}.\n", .{err});
+        };
+    }
     std.debug.print("finished small buffer.\n", .{});
 }
 
 // Send 1GB of the letter E.
+// Sending to topic "test 1"
 fn bulk_write(c: *client.Client) !void {
+    const wait_info: std.c.timespec = .{
+        .sec = 1,
+        .nsec = std.time.ms_per_s * 500,
+    };
     var alloc = std.heap.smp_allocator;
-    var topic_name: []u8 = try alloc.alloc(u8, 4);
+    var topic_name: []u8 = try alloc.alloc(u8, 6);
     topic_name[0] = 't';
     topic_name[1] = 'e';
     topic_name[2] = 's';
     topic_name[3] = 't';
+    topic_name[4] = ' ';
+    topic_name[5] = '1';
     const large_buffer: []u8 = try alloc.alloc(u8, 1_000_000);
     @memset(large_buffer, 'E');
+
     var msg = chebi.message.Message.init_with_body_no_copy(
         alloc,
         topic_name,
@@ -41,11 +49,12 @@ fn bulk_write(c: *client.Client) !void {
     defer msg.deinit();
     std.debug.print("sending 1GB buffer.\n", .{});
 
-    // signal small message to start
-    cond.signal();
-    c.*.write_msg(&msg) catch |err| {
-        std.debug.print("bulk writer err: {any}.\n", .{err});
-    };
+    for (0..n) |_| {
+        _ = std.c.nanosleep(&wait_info, null);
+        c.*.write_msg(&msg) catch |err| {
+            std.debug.print("bulk writer err: {any}.\n", .{err});
+        };
+    }
     std.debug.print("finished 1GB buffer.\n", .{});
 }
 
@@ -54,7 +63,6 @@ pub fn main() !void {
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
     try c.connect();
-    try c.subscribe("test");
     const simple_thread = try std.Thread.spawn(
         .{ .allocator = std.heap.smp_allocator },
         write_simple,
