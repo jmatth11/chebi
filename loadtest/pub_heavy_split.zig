@@ -78,6 +78,8 @@ pub fn main() !void {
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
     try c.connect();
+    try c.subscribe("test 1");
+    try c.subscribe("test 2");
     const simple_thread = try std.Thread.spawn(
         .{ .allocator = std.heap.smp_allocator },
         write_simple,

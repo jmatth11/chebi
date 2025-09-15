@@ -25,11 +25,7 @@ pub fn main() !void {
             std.debug.print("msg: {s}\n", .{msg.payload.?});
         } else {
             if (msg.payload) |payload| {
-                std.debug.print("large file: size({}).\n", .{payload.len});
-                const f = try std.fs.cwd().createFile("sub.out", .{});
-                defer f.close();
-                try f.writeAll(payload);
-                std.debug.print("written to sub.out.\n", .{});
+                std.debug.print("large file recv: size({}).\n", .{payload.len});
             }
         }
         if (msg_count == 100) {
