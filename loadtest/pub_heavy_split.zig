@@ -3,6 +3,12 @@ const chebi = @import("chebi");
 const client = chebi.client;
 
 const n: comptime_int = 100;
+var running: bool = true;
+const empty_sig: [16]c_ulong = @splat(0);
+
+export fn shutdown(_: i32) void {
+    running = false;
+}
 
 // Send simple message.
 // Sending to topic "test 1"
@@ -14,10 +20,12 @@ fn write_simple(c: *client.Client) !void {
 
     std.debug.print("sending {} small buffers.\n", .{n});
     for (0..n) |_| {
-        _ = std.c.nanosleep(&wait_info, null);
-        c.*.write("test 1", "hello from pub", chebi.message.Type.text) catch |err| {
-            std.debug.print("simple write err: {any}.\n", .{err});
-        };
+        if (running) {
+            _ = std.c.nanosleep(&wait_info, null);
+            c.*.write("test 1", "hello from pub", chebi.message.Type.text) catch |err| {
+                std.debug.print("simple write err: {any}.\n", .{err});
+            };
+        }
     }
     std.debug.print("finished small buffer.\n", .{});
 }
@@ -50,15 +58,22 @@ fn bulk_write(c: *client.Client) !void {
     std.debug.print("sending 1GB buffer.\n", .{});
 
     for (0..n) |_| {
-        _ = std.c.nanosleep(&wait_info, null);
-        c.*.write_msg(&msg) catch |err| {
-            std.debug.print("bulk writer err: {any}.\n", .{err});
-        };
+        if (running) {
+            _ = std.c.nanosleep(&wait_info, null);
+            c.*.write_msg(&msg) catch |err| {
+                std.debug.print("bulk writer err: {any}.\n", .{err});
+            };
+        }
     }
     std.debug.print("finished 1GB buffer.\n", .{});
 }
 
 pub fn main() !void {
+    _ = std.c.sigaction(std.c.SIG.INT, &.{
+        .handler = .{ .handler = shutdown },
+        .mask = empty_sig,
+        .flags = 0,
+    }, null);
     const addr = std.net.Address.initIp4([4]u8{ 127, 0, 0, 1 }, 3000);
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
@@ -82,4 +97,5 @@ pub fn main() !void {
     };
     _ = std.c.nanosleep(&wait_info, null);
     try c.close();
+    std.debug.print("pub2 has finished\n", .{});
 }

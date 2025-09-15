@@ -84,8 +84,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const compile_examples = b.option(bool, "examples", "Compile the Example programs.") or true;
-    const compile_loadtest = b.option(bool, "loadtest", "Compile the load test programs.") or false;
+    const compile_examples = b.option(bool, "examples", "Compile the Example programs.") orelse true;
+    const compile_loadtest = b.option(bool, "loadtest", "Compile the load test programs.") orelse false;
     const linkage = b.option(std.builtin.LinkMode, "linkage", "Link mode for utf8-zig library") orelse .static;
 
     const lib_mod = b.createModule(.{
@@ -106,10 +106,10 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     if (compile_examples) {
-        try gen_examples();
+        try gen_examples(b, target, optimize, lib_mod);
     }
     if (compile_loadtest) {
-        try gen_load_test();
+        try gen_load_test(b, target, optimize, lib_mod);
     }
 
     const lib_test_mod = b.createModule(.{

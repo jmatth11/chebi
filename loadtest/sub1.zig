@@ -11,7 +11,7 @@ pub fn main() !void {
     const addr = std.net.Address.initIp4([4]u8 {127,0,0,1}, 3000);
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
-    var msg_count: comptime_int = 0;
+    var msg_count: usize = 0;
 
     try c.connect();
     try c.subscribe("test 1");
@@ -36,4 +36,5 @@ pub fn main() !void {
             running = false;
         }
     }
+    std.debug.print("sub1 has finished\n", .{});
 }
