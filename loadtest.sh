@@ -8,9 +8,11 @@ pub1_pid=""
 pub2_pid=""
 
 loadtest_terminate_program() {
-  echo "--- terminating: $1"
   if [[ -n "$1" ]]; then
+    echo "--- terminating: $1"
     kill -2 "$1" 2> /dev/null
+  else
+    return 0
   fi
   sleep 1
   if [[ $(kill -0 "$1" &> /dev/null) ]]; then
@@ -23,10 +25,15 @@ loadtest_cleanup() {
 
   running=false
   loadtest_terminate_program "$pub1_pid"
+  pub1_pid=""
   loadtest_terminate_program "$pub2_pid"
+  pub2_pid=""
   loadtest_terminate_program "$sub1_pid"
+  sub1_pid=""
   loadtest_terminate_program "$sub2_pid"
+  sub2_pid=""
   loadtest_terminate_program "$server_pid"
+  server_pid=""
 
 }
 
