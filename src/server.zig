@@ -237,13 +237,14 @@ pub const Server = struct {
     fn server_info_packet(self: *Server) !packet.Packet {
         const len:usize = 2 + @sizeOf(usize);
         var buf: []u8 = try self.alloc.alloc(u8, len);
+        defer self.alloc.free(buf);
         var pack = packet.Packet.init(self.alloc);
         pack.header.flags.fin = true;
         pack.header.flags.opcode = protocol.OpCode.c_connection;
         pack.header.flags.version = self.version;
         pack.header.topic_len = 0;
         var flags: protocol.ServerFlags = .{};
-        var offset: usize = 1;
+        var offset: u16 = 1;
         if (self.compression != .raw) {
             buf[1] = @intFromEnum(self.compression);
             offset += 1;
@@ -261,8 +262,11 @@ pub const Server = struct {
             offset += @sizeOf(usize);
         }
         buf[0] = flags.pack();
-        pack.body = buf;
-        pack.header.payload_len = @intCast(pack.body.?.len);
+        pack.body = try self.alloc.alloc(u8, offset);
+        for (0..offset) |index| {
+            pack.body.?[index] = buf[index];
+        }
+        pack.header.payload_len = offset;
         return pack;
     }
 

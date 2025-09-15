@@ -56,7 +56,8 @@ pub const Packet = struct {
         if (self.body) |body| {
             self.alloc.free(body);
         }
-        const body_size: usize = self.header.topic_len + self.header.payload_len;
+        var body_size: usize = @intCast(self.header.topic_len);
+        body_size += @intCast(self.header.payload_len);
         self.body = try self.alloc.alloc(u8, body_size);
     }
 
