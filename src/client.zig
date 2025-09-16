@@ -10,6 +10,8 @@ const compression = @import("compression.zig");
 pub const Error = error{
     /// The operation would have blocked.
     would_block,
+    /// Rethrowing errno.
+    errno,
 
     /// Error with the listener setup.
     listener_setup,
@@ -23,10 +25,13 @@ pub const Error = error{
     connection_error,
     /// Server info message error.
     server_message_invalid,
+    /// We haven't received the full packet yet.
+    partial_packet,
 };
 
 /// Simple Client to interact with the Server.
 pub const Client = struct {
+    id: usize = 0,
     alloc: std.mem.Allocator,
     listener: std.c.fd_t = -1,
     srv_addr: std.net.Address,
@@ -53,6 +58,18 @@ pub const Client = struct {
             result.errno = std.posix.errno(-1);
             return Error.listener_setup;
         }
+        const yes: i32 = 1;
+        // setup no delay on TCP messages
+        if (std.c.setsockopt(
+            result.listener,
+            std.c.IPPROTO.TCP,
+            std.c.TCP.NODELAY,
+            &yes,
+            @sizeOf(i32),
+        ) == -1) {
+            result.errno = std.posix.errno(-1);
+            return Error.listener_setup;
+        }
         return result;
     }
 
@@ -62,7 +79,7 @@ pub const Client = struct {
             return;
         }
         self.close() catch |err| {
-            std.debug.print("error closing client: {any}\n", .{err});
+            std.log.err("closing client: {any}\n", .{err});
         };
         self.packetManager.deinit();
     }
@@ -182,12 +199,15 @@ pub const Client = struct {
             msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
+        std.log.debug("write_msg: id - {}; topic - {s}; channel - {}\n", .{ self.id, msg.topic.?, channel });
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
         for (pc.packets.items) |pack| {
             writer.write_packet(self.alloc, self.listener, pack) catch |err| {
                 if (err == writer.Error.would_block) {
                     return Error.would_block;
+                } else if (err == writer.Error.errno) {
+                    return Error.errno;
                 }
                 return err;
             };
@@ -199,7 +219,13 @@ pub const Client = struct {
         var received: bool = false;
         var msg = message.Message.init(self.alloc);
         while (!received) {
-            const pack = try self.read_packet();
+            const pack = self.read_packet() catch |err| {
+                if (err == reader.Error.payload_len_invalid) {
+                    // this error is for partial packets.
+                    continue;
+                }
+                return err;
+            };
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
                 received = true;

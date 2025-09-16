@@ -56,7 +56,8 @@ pub const Packet = struct {
         if (self.body) |body| {
             self.alloc.free(body);
         }
-        const body_size: usize = self.header.topic_len + self.header.payload_len;
+        var body_size: usize = @intCast(self.header.topic_len);
+        body_size += @intCast(self.header.payload_len);
         self.body = try self.alloc.alloc(u8, body_size);
     }
 
@@ -307,26 +308,26 @@ pub const ChannelCollection = struct {
         if (mapping) |coll| {
             coll.add(entry) catch |err| {
                 if (err == Error.topic_mismatch) {
-                    std.debug.print("received packet not associated with previous topic.\n", .{});
-                    std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
+                    std.log.err("received packet not associated with previous topic.\n", .{});
+                    std.log.err("replacing packet collector to not hold on to partial messages.\n", .{});
                     coll.deinit();
                     if (!self.channels.remove(channel)) {
-                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                        std.log.err("channel({d}) error removing partial entry from channel collection", .{channel});
                     }
                     return try self.new_or_pop(channel, entry);
                 } else if (err == Error.channel_mismatch) {
-                    std.debug.print("received packet not associated with previous channel.\n", .{});
-                    std.debug.print("replacing packet collector to not hold on to partial messages.\n", .{});
+                    std.log.err("received packet not associated with previous channel.\n", .{});
+                    std.log.err("replacing packet collector to not hold on to partial messages.\n", .{});
                     coll.deinit();
                     if (!self.channels.remove(channel)) {
-                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                        std.log.err("channel({d}) error removing partial entry from channel collection", .{channel});
                     }
                     return try self.new_or_pop(channel, entry);
                 } else if (err == Error.body_len_exceeded) {
-                    std.debug.print("message body has exceeded server limit: {any}\n", .{self.limit});
+                    std.log.err("message body has exceeded server limit: {any}\n", .{self.limit});
                     coll.deinit();
                     if (!self.channels.remove(channel)) {
-                        std.debug.print("channel({d}) error removing partial entry from channel collection", .{channel});
+                        std.log.err("channel({d}) error removing partial entry from channel collection", .{channel});
                     }
                 } else {
                     return err;
@@ -335,7 +336,7 @@ pub const ChannelCollection = struct {
             if (entry.header.flags.fin) {
                 result = coll.*;
                 if (!self.channels.remove(channel)) {
-                    std.debug.print("channel({d}) could not be removed.", .{channel});
+                    std.log.err("channel({d}) could not be removed.", .{channel});
                 }
             }
         } else {
@@ -391,7 +392,7 @@ pub const PacketManager = struct {
             while (it.next()) |chan| {
                 var chan_it = chan.channels.valueIterator();
                 while (chan_it.next()) |coll| {
-                    std.debug.print(
+                    std.log.debug(
                         "topic:{s}, channel:{}, payload_size:{}, packet.len:{}\n",
                         .{
                             coll.topic,
@@ -466,14 +467,14 @@ pub const PacketManager = struct {
                 col.deinit();
                 // remove the client entry since the packet collector is finished
                 if (!cm.remove(client)) {
-                    std.debug.print("client({d}) could not be removed", .{client});
+                    std.log.err("client({d}) could not be removed", .{client});
                 }
             }
             // remove topic if it has no pending packet collectors
             if (cm.count() == 0) {
                 cm.deinit();
                 if (!self.collector.remove(topic)) {
-                    std.debug.print("topic({s}) could not be removed", .{topic});
+                    std.log.err("topic({s}) could not be removed", .{topic});
                 }
             }
         }

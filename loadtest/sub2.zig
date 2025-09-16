@@ -1,0 +1,36 @@
+const std = @import("std");
+const chebi = @import("chebi");
+const client = chebi.client;
+
+var running: bool = true;
+
+export fn shutdown(_: i32) void {
+    running = false;
+}
+pub fn main() !void {
+    const addr = std.net.Address.initIp4([4]u8 {127,0,0,1}, 3000);
+    var c = try client.Client.init(std.heap.smp_allocator, addr);
+    defer c.deinit();
+    var msg_count: usize = 0;
+
+    try c.connect();
+    try c.subscribe("test 2");
+
+    while (running) {
+        var msg = try c.next_msg();
+        defer msg.deinit();
+        msg_count = msg_count + 1;
+        std.debug.print("SUB-2 topic: {s} -- ", .{msg.topic.?});
+        if (msg.payload.?.len < 50) {
+            std.debug.print("msg: \"{s}\"\n", .{msg.payload.?});
+        } else {
+            if (msg.payload) |payload| {
+                std.debug.print("large file recv: size({}).\n", .{payload.len});
+            }
+        }
+        if (msg_count >= 100) {
+            running = false;
+        }
+    }
+    std.debug.print("SUB-2 has finished\n", .{});
+}

@@ -7,7 +7,6 @@ pub fn main() !void {
     var c = try client.Client.init(std.heap.smp_allocator, addr);
     defer c.deinit();
     try c.connect();
-    try c.subscribe("test");
     try c.write("test", "hello from pub", chebi.message.Type.text);
     const wait_info: std.c.timespec = .{
         .sec = 1,

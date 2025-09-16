@@ -110,6 +110,18 @@ pub const Server = struct {
                 } else if ((evt.events & EPOLL.IN) > 0) {
                     try self.event(evt.data.fd);
                 }
+                if ((evt.events & EPOLL.OUT) > 0) {
+                    // TODO this is terrible inefficient.
+                    // Rework packetHandler to distribute messages more efficiently
+                    // this may require a complete rework of how packetHandler works currently
+                    self.packetHandler.process(self.manager.topics) catch |err| {
+                        if (err == handler.Error.errno) {
+                            const errno = std.posix.errno(-1);
+                            std.log.err("server errno: {any}\n", .{errno});
+                        }
+                        return err;
+                    };
+                }
                 if ((evt.events & (EPOLL.RDHUP | EPOLL.HUP)) > 0) {
                     self.remove(evt.data.fd);
                 }
@@ -132,24 +144,24 @@ pub const Server = struct {
                 const accept_errno = std.posix.errno(-1);
                 // ignore these errors because they are from setting NONBLOCK
                 if (accept_errno != std.c.E.AGAIN) {
-                    std.debug.print("Server accept error: {any}\n", .{accept_errno});
+                    std.log.err("Server accept error: {any}\n", .{accept_errno});
                     self.errno = accept_errno;
                 }
                 accept_running = false;
             } else {
                 try self.poll.add_connection(conn);
-                std.debug.print("adding connection {any}\n", .{conn});
+                std.log.info("adding connection {any}\n", .{conn});
             }
         }
     }
 
     fn remove(self: *Server, fd: std.c.fd_t) void {
         self.manager.unsubscribe_all(fd);
-        std.debug.print("closing connection for {any}.\n", .{fd});
+        std.log.info("closing connection for {any}.\n", .{fd});
         self.poll.delete(fd) catch {
             const errno = std.posix.errno(-1);
             if (errno != std.c.E.BADF) {
-                std.debug.print("poll delete failed with errno: {any}\n", .{errno});
+                std.log.err("poll delete failed with errno: {any}\n", .{errno});
             }
         };
         _ = std.c.close(fd);
@@ -166,9 +178,9 @@ pub const Server = struct {
                 if (err == reader.Error.errno) {
                     const errno = std.posix.errno(-1);
                     if (errno == std.c.E.BADF) {
-                        std.debug.print("file descriptor bad or closed abruptly: {}\n", .{fd});
+                        std.log.debug("file descriptor bad or closed abruptly: {}\n", .{fd});
                     } else {
-                        std.debug.print("errno: {any}\n", .{errno});
+                        std.log.err("errno: {any}\n", .{errno});
                     }
                 }
                 continue;
@@ -181,7 +193,7 @@ pub const Server = struct {
                     var pack = try self.server_info_packet();
                     defer pack.deinit();
                     self.packetHandler.send(fd, pack) catch |err| {
-                        std.debug.print("connection packet error: {any}\n", .{err});
+                        std.log.err("connection packet error: {any}\n", .{err});
                         self.remove(fd);
                     };
                 },
@@ -194,7 +206,7 @@ pub const Server = struct {
                 },
                 protocol.OpCode.c_unsubscribe => {
                     const topic = try packet_entry.get_topic_name();
-                    std.debug.print("unsubscribe {any} from {any}.\n", .{ fd, topic });
+                    std.log.info("unsubscribe {any} from {any}.\n", .{ fd, topic });
                     self.manager.unsubscribe(
                         fd,
                         topic,
@@ -204,7 +216,7 @@ pub const Server = struct {
                     self.remove(fd);
                 },
                 protocol.OpCode.c_pong => {
-                    std.debug.print("pong received: {any}\n", .{fd});
+                    std.log.info("pong received: {any}\n", .{fd});
                     try self.manager.update_client_timestamp(fd);
                 },
                 protocol.OpCode.nc_continue, protocol.OpCode.nc_bin, protocol.OpCode.nc_text => {
@@ -218,32 +230,26 @@ pub const Server = struct {
                     }
                 },
                 else => {
-                    std.debug.print("unsupported opcode: {any}\n", .{packet_entry.header.flags.opcode});
+                    std.log.debug("unsupported opcode: {any}; from = {any}\n", .{packet_entry.header.flags.opcode, fd});
                 },
             }
             if (release_packet_entry) {
                 packet_entry.deinit();
             }
         }
-        self.packetHandler.process(self.manager.topics) catch |err| {
-            if (err == handler.Error.errno) {
-                const errno = std.posix.errno(-1);
-                std.debug.print("server errno: {any}\n", .{errno});
-            }
-            return err;
-        };
     }
 
     fn server_info_packet(self: *Server) !packet.Packet {
         const len:usize = 2 + @sizeOf(usize);
         var buf: []u8 = try self.alloc.alloc(u8, len);
+        defer self.alloc.free(buf);
         var pack = packet.Packet.init(self.alloc);
         pack.header.flags.fin = true;
         pack.header.flags.opcode = protocol.OpCode.c_connection;
         pack.header.flags.version = self.version;
         pack.header.topic_len = 0;
         var flags: protocol.ServerFlags = .{};
-        var offset: usize = 1;
+        var offset: u16 = 1;
         if (self.compression != .raw) {
             buf[1] = @intFromEnum(self.compression);
             offset += 1;
@@ -261,8 +267,11 @@ pub const Server = struct {
             offset += @sizeOf(usize);
         }
         buf[0] = flags.pack();
-        pack.body = buf;
-        pack.header.payload_len = @intCast(pack.body.?.len);
+        pack.body = try self.alloc.alloc(u8, offset);
+        for (0..offset) |index| {
+            pack.body.?[index] = buf[index];
+        }
+        pack.header.payload_len = offset;
         return pack;
     }
 

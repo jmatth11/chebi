@@ -151,9 +151,6 @@ pub fn main() !void {
     // like compression algorithm and msg size limit.
     try c.connect();
 
-    // Subscribe to the "test" topic.
-    try c.subscribe("test");
-
     // Write text type message to the "test" topic.
     try c.write("test", "hello from pub", chebi.message.Type.text);
 
@@ -164,6 +161,22 @@ pub fn main() !void {
     try c.close();
 }
 ```
+
+## Load Testing
+
+All load test programs exist in `./loadtest`
+
+To perform a load test on the repo you first need to build the load test executables.
+
+Building:
+```bash
+zig build -Dloadtest=true
+```
+
+From here you can run the `./loadtest.sh` file which will kick off the load test.
+
+You can type CTRL-C to exit out of the load test before it ends, whenever you'd like. It will bring
+down the applications properly.
 
 ## Simple Demo
 
