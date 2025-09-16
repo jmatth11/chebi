@@ -66,7 +66,7 @@ pub const PacketHandler = struct {
             for (clients.items) |socket| {
                 // skip ourselves
                 if (from == socket) {
-                    return;
+                    continue;
                 }
                 try self.send(socket, payload);
             }
@@ -74,8 +74,9 @@ pub const PacketHandler = struct {
     }
 
     pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
-        const try_again_list_n: usize = self.try_again_list.items.len;
-        for (try_again_list_n..0) |index| {
+        var try_again_list_idx: usize = self.try_again_list.items.len;
+        while (try_again_list_idx > 0) : (try_again_list_idx -= 1) {
+            const index = try_again_list_idx - 1;
             var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
             // TODO check if it's actually incrementing
             tmp_item.attempts += 1;

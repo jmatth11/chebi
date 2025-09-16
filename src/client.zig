@@ -56,6 +56,18 @@ pub const Client = struct {
             result.errno = std.posix.errno(-1);
             return Error.listener_setup;
         }
+        const yes: i32 = 1;
+        // setup no delay on TCP messages
+        if (std.c.setsockopt(
+            result.listener,
+            std.c.IPPROTO.TCP,
+            std.c.TCP.NODELAY,
+            &yes,
+            @sizeOf(i32),
+        ) == -1) {
+            result.errno = std.posix.errno(-1);
+            return Error.listener_setup;
+        }
         return result;
     }
 
@@ -185,7 +197,7 @@ pub const Client = struct {
             msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
-        std.debug.print("id - {}; topic - {s}; channel - {}\n", .{self.id, msg.topic.?, channel});
+        std.debug.print("id - {}; topic - {s}; channel - {}\n", .{ self.id, msg.topic.?, channel });
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
         for (pc.packets.items) |pack| {
