@@ -162,6 +162,22 @@ pub fn main() !void {
 }
 ```
 
+## Load Testing
+
+All load test programs exist in `./loadtest`
+
+To perform a load test on the repo you first need to build the load test executables.
+
+Building:
+```bash
+zig build -Dloadtest=true
+```
+
+From here you can run the `./loadtest.sh` file which will kick off the load test.
+
+You can type CTRL-C to exit out of the load test before it ends, whenever you'd like. It will bring
+down the applications properly.
+
 ## Simple Demo
 
 Simple demo of 2 subscribers and 1 publisher.
