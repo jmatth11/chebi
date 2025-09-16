@@ -98,8 +98,8 @@ pub const PacketHandler = struct {
                 if (tmp_item.attempts == 3) {
                     std.debug.print("dropping message from {}\n", .{tmp_item.packet.from});
                 }
-                _ = self.try_again_list.swapRemove(index);
                 tmp_item.packet.collection.deinit();
+                _ = self.try_again_list.swapRemove(index);
             }
         }
         // TODO this is MVP approach, revisit to parallelize

@@ -186,7 +186,6 @@ pub const Message = struct {
         while (offset < body_len) {
             var pack = packet.Packet.init(self.alloc);
             if (offset_len >= body_len) {
-                std.debug.print("final packet\n", .{});
                 pack.header.flags.fin = true;
                 pack.header.flags.opcode = switch (self.msg_type) {
                     Type.bin, Type.compressed => proto.OpCode.nc_bin,

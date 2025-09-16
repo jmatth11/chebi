@@ -20,10 +20,10 @@ const PartialPackets = std.AutoHashMap(std.c.fd_t, packet.Packet);
 
 var partialPacketCollection = PartialPackets.init(std.heap.smp_allocator);
 
-fn process_partial(alloc: std.mem.Allocator, socket: std.c.fd_t, pack: *packet.Packet) !void {
+fn process_partial(socket: std.c.fd_t, pack: *packet.Packet) !void {
     var full_size: usize = @intCast(pack.header.topic_len);
     full_size += @intCast(pack.header.payload_len);
-    var buf = try alloc.alloc(u8, full_size);
+    var buf = try pack.alloc.alloc(u8, full_size);
     var diff: usize = full_size;
     var offset: usize = 0;
     if (pack.body) |body| {
@@ -40,6 +40,7 @@ fn process_partial(alloc: std.mem.Allocator, socket: std.c.fd_t, pack: *packet.P
         }
         // dealloc packet
         pack.deinit();
+        _ = partialPacketCollection.remove(socket);
         return Error.errno;
     }
     if (pack.body) |body| {
@@ -49,7 +50,7 @@ fn process_partial(alloc: std.mem.Allocator, socket: std.c.fd_t, pack: *packet.P
     pack.body = buf;
     if (recv_len < diff) {
         const new_size: usize = @as(usize, @intCast(recv_len)) + diff;
-        const new_body = try alloc.realloc(pack.body.?, new_size);
+        const new_body = try pack.alloc.realloc(pack.body.?, new_size);
         pack.body = new_body;
         // store partial packets to try and grab the rest later.
         partialPacketCollection.put(socket, pack.*) catch  |err| {
@@ -68,7 +69,7 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
     // TODO clean this up into tidy functions
     if (partialPacketCollection.get(socket)) |entry| {
         result = entry;
-        try process_partial(alloc, socket, &result);
+        try process_partial(socket, &result);
         _ = partialPacketCollection.remove(socket);
         return result;
     } else {

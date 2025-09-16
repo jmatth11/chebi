@@ -25,6 +25,8 @@ pub const Error = error{
     connection_error,
     /// Server info message error.
     server_message_invalid,
+    /// We haven't received the full packet yet.
+    partial_packet,
 };
 
 /// Simple Client to interact with the Server.
@@ -217,7 +219,13 @@ pub const Client = struct {
         var received: bool = false;
         var msg = message.Message.init(self.alloc);
         while (!received) {
-            const pack = try self.read_packet();
+            const pack = self.read_packet() catch |err| {
+                if (err == reader.Error.payload_len_invalid) {
+                    // this error is for partial packets.
+                    continue;
+                }
+                return err;
+            };
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
                 received = true;
