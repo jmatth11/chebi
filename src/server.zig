@@ -111,7 +111,9 @@ pub const Server = struct {
                     try self.event(evt.data.fd);
                 }
                 if ((evt.events & EPOLL.OUT) > 0) {
-                    self.packetHandler.process(evt.data.fd) catch |err| {
+                    // process any messages that encountered EAGAIN/E_WOULD_BLOCK
+                    // on first send
+                    self.packetHandler.process_eagain(evt.data.fd) catch |err| {
                         if (err == handler.Error.errno) {
                             const errno = std.posix.errno(-1);
                             std.log.err("server errno: {any}\n", .{errno});
@@ -123,6 +125,8 @@ pub const Server = struct {
                     self.remove(evt.data.fd);
                 }
             }
+            // process any message that came in
+            try self.packetHandler.process();
         }
     }
 
@@ -238,16 +242,15 @@ pub const Server = struct {
     }
 
     fn newPacketHandler(self: *Server, from: std.c.fd_t, collection: packet.PacketCollection) !?handler.PacketHandlerInfo {
+        // TODO maybe move this stuff into packet handler itself.
         var result: handler.PacketHandlerInfo = .{
             .from = from,
             .collection = collection,
-            .recipients = handler.RecipientMapping.init(self.alloc),
+            .recipients = undefined,
         };
         const clients_opt = self.manager.topics.get(collection.topic);
         if (clients_opt) |clients| {
-            for (clients.items) |c| {
-                try result.recipients.put(c, true);
-            }
+            result.recipients = try clients.clone();
             return result;
         }
         return null;

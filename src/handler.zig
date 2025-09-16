@@ -12,7 +12,7 @@ const TryAgainInfo = struct {
 
 const HandlerInfoList = std.array_list.Managed(PacketHandlerInfo);
 const TryAgainList = std.array_list.Managed(TryAgainInfo);
-pub const RecipientMapping = std.AutoHashMap(std.c.fd_t, bool);
+pub const RecipientList = std.array_list.Managed(std.c.fd_t);
 
 /// Errors with the packet handler.
 pub const Error = error{
@@ -24,7 +24,7 @@ pub const Error = error{
 pub const PacketHandlerInfo = struct {
     from: std.c.fd_t,
     collection: packet.PacketCollection,
-    recipients: RecipientMapping,
+    recipients: RecipientList,
 };
 
 pub const PacketHandler = struct {
@@ -73,33 +73,34 @@ pub const PacketHandler = struct {
         }
     }
 
-    pub fn process(self: *PacketHandler, id: std.c.fd_t) !void {
-        var try_again_list_idx: usize = self.try_again_list.items.len;
-        while (try_again_list_idx > 0) : (try_again_list_idx -= 1) {
-            const index = try_again_list_idx - 1;
-            var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
-            tmp_item.attempts += 1;
-            var remove: bool = true;
-            self.process_single(tmp_item.from, &tmp_item.collection, tmp_item.to) catch |err| {
-                if (err == Error.try_again) {
-                    remove = false;
-                } else {
-                    return err;
+    pub fn process_eagain(self: *PacketHandler, id: std.c.fd_t) !void {
+        for (self.try_again_list.items, 0..) |item, idx| {
+            if (item.to == id) {
+                item.attempts += 1;
+                var remove: bool = true;
+                self.process_single(item.from, &item.collection, item.to) catch |err| {
+                    if (err == Error.try_again) {
+                        remove = false;
+                    } else {
+                        return err;
+                    }
+                };
+                // remove if processed or if it's the N attempt
+                if (remove or item.attempts == 5) {
+                    if (item.attempts == 3) {
+                        std.log.err("dropping message from {}\n", .{item.from});
+                    }
+                    item.collection.deinit();
+                    _ = self.try_again_list.swapRemove(idx);
                 }
-            };
-            // remove if processed or if it's the N attempt
-            if (remove or tmp_item.attempts == 5) {
-                if (tmp_item.attempts == 3) {
-                    std.log.err("dropping message from {}\n", .{tmp_item.from});
-                }
-                tmp_item.collection.deinit();
-                _ = self.try_again_list.swapRemove(index);
+                return;
             }
         }
-        var remove_idx: ?usize = null;
-        for (self.collection.items, 0..) |*info, idx| {
-            const client_opt = info.recipients.get(id);
-            if (client_opt) |_| {
+    }
+
+    pub fn process(self: *PacketHandler) !void {
+        for (self.collection.items) |*info| {
+            for (info.recipients.items) |id| {
                 self.process_single(info.from, &info.collection, id) catch |err| {
                     if (err == Error.try_again) {
                         const entry: TryAgainInfo = .{
@@ -112,19 +113,17 @@ pub const PacketHandler = struct {
                         return err;
                     }
                 };
-                _ = info.recipients.remove(id);
             }
             if (info.recipients.count() == 0) {
                 // free collection once done
                 info.*.collection.deinit();
-                remove_idx = idx;
+                self.alloc.free(info.recipients);
             }
         }
-        if (remove_idx) |idx| {
-            // remove fully processed collections.
-            _ = self.collection.swapRemove(idx);
-        }
+        // reset collection.
+        try self.collection.resize(0);
     }
+
 
     /// Send the packet to the given socket.
     pub fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
