@@ -111,6 +111,9 @@ pub const Server = struct {
                     try self.event(evt.data.fd);
                 }
                 if ((evt.events & EPOLL.OUT) > 0) {
+                    // TODO this is terrible inefficient.
+                    // Rework packetHandler to distribute messages more efficiently
+                    // this may require a complete rework of how packetHandler works currently
                     self.packetHandler.process(self.manager.topics) catch |err| {
                         if (err == handler.Error.errno) {
                             const errno = std.posix.errno(-1);
