@@ -16,10 +16,64 @@ pub const Error = error {
     errno,
 };
 
+const PartialPackets = std.AutoHashMap(std.c.fd_t, packet.Packet);
+
+var partialPacketCollection = PartialPackets.init(std.heap.smp_allocator);
+
+fn process_partial(alloc: std.mem.Allocator, socket: std.c.fd_t, pack: *packet.Packet) !void {
+    var full_size: usize = @intCast(pack.header.topic_len);
+    full_size += @intCast(pack.header.payload_len);
+    var buf = try alloc.alloc(u8, full_size);
+    var diff: usize = full_size;
+    var offset: usize = 0;
+    if (pack.body) |body| {
+        diff = diff - body.len;
+        @memmove(buf.ptr, body);
+        offset = body.len;
+    }
+
+    const recv_len: isize = std.c.recv(socket, buf[offset..full_size].ptr, diff, 0);
+    if (recv_len == -1) {
+        const errno = std.posix.errno(-1);
+        if (errno == std.c.E.AGAIN) {
+            return Error.would_block;
+        }
+        // dealloc packet
+        pack.deinit();
+        return Error.errno;
+    }
+    if (pack.body) |body| {
+        pack.alloc.free(body);
+        pack.body = null;
+    }
+    pack.body = buf;
+    if (recv_len < diff) {
+        const new_size: usize = @as(usize, @intCast(recv_len)) + diff;
+        const new_body = try alloc.realloc(pack.body.?, new_size);
+        pack.body = new_body;
+        // store partial packets to try and grab the rest later.
+        partialPacketCollection.put(socket, pack.*) catch  |err| {
+            pack.deinit();
+            return err;
+        };
+        std.debug.print("recv_len = {}; body.len = {}; diff = {}\n", .{recv_len, buf.len, diff});
+        return Error.payload_len_invalid;
+    }
+}
+
 /// Grab the next packet from the given socket
 pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet {
     // create a packet.
-    var result: packet.Packet = packet.Packet.init(alloc);
+    var result: packet.Packet = undefined;
+    // TODO clean this up into tidy functions
+    if (partialPacketCollection.get(socket)) |entry| {
+        result = entry;
+        try process_partial(alloc, socket, &result);
+        _ = partialPacketCollection.remove(socket);
+        return result;
+    } else {
+        result = packet.Packet.init(alloc);
+    }
     // peek header info
     var header: [6]u8 = @splat(0);
     var recv_len: isize = std.c.recv(socket, &header, 6, 0);
@@ -50,11 +104,20 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
         if (errno == std.c.E.AGAIN) {
             return Error.would_block;
         }
+        // dealloc packet
+        result.deinit();
         return Error.errno;
     }
-    // TODO need to reconstruct partially sent messages.
     if (recv_len < result.body.?.len) {
-        std.debug.print("recv_len = {}; body.len = {}\n", .{recv_len, result.body.?.len});
+        const old_len = result.body.?.len;
+        const new_body = try alloc.realloc(result.body.?, @intCast(recv_len));
+        result.body = new_body;
+        // store partial packets to try and grab the rest later.
+        partialPacketCollection.put(socket, result) catch  |err| {
+            result.deinit();
+            return err;
+        };
+        std.debug.print("recv_len = {}; body.len = {}\n", .{recv_len, old_len});
         return Error.payload_len_invalid;
     }
     return result;
