@@ -78,7 +78,6 @@ pub const PacketHandler = struct {
         while (try_again_list_idx > 0) : (try_again_list_idx -= 1) {
             const index = try_again_list_idx - 1;
             var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
-            // TODO check if it's actually incrementing
             tmp_item.attempts += 1;
             const collection = tmp_item.packet.collection;
             const topic = collection.topic;
@@ -93,10 +92,10 @@ pub const PacketHandler = struct {
                     }
                 };
             }
-            // remove if processed or if it's the third attempt
-            if (remove or tmp_item.attempts == 3) {
+            // remove if processed or if it's the N attempt
+            if (remove or tmp_item.attempts == 5) {
                 if (tmp_item.attempts == 3) {
-                    std.debug.print("dropping message from {}\n", .{tmp_item.packet.from});
+                    std.log.err("dropping message from {}\n", .{tmp_item.packet.from});
                 }
                 tmp_item.packet.collection.deinit();
                 _ = self.try_again_list.swapRemove(index);

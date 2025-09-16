@@ -151,9 +151,6 @@ pub fn main() !void {
     // like compression algorithm and msg size limit.
     try c.connect();
 
-    // Subscribe to the "test" topic.
-    try c.subscribe("test");
-
     // Write text type message to the "test" topic.
     try c.write("test", "hello from pub", chebi.message.Type.text);
 

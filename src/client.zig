@@ -79,7 +79,7 @@ pub const Client = struct {
             return;
         }
         self.close() catch |err| {
-            std.debug.print("error closing client: {any}\n", .{err});
+            std.log.err("closing client: {any}\n", .{err});
         };
         self.packetManager.deinit();
     }
@@ -199,7 +199,7 @@ pub const Client = struct {
             msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
-        std.debug.print("id - {}; topic - {s}; channel - {}\n", .{ self.id, msg.topic.?, channel });
+        std.log.debug("write_msg: id - {}; topic - {s}; channel - {}\n", .{ self.id, msg.topic.?, channel });
         var pc = try msg.packet_collection(channel);
         defer pc.deinit();
         for (pc.packets.items) |pack| {

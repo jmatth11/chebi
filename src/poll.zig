@@ -57,7 +57,7 @@ pub fn Poll(comptime max_events: comptime_int) type {
                 .data = .{
                     .fd = conn,
                 },
-                .events = EPOLL.IN | EPOLL.ET | EPOLL.RDHUP | EPOLL.HUP,
+                .events = EPOLL.IN | EPOLL.OUT | EPOLL.ET | EPOLL.RDHUP | EPOLL.HUP,
             };
             try self.add_event(&event);
         }

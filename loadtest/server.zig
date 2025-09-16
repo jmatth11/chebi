@@ -17,10 +17,11 @@ pub fn main() !void {
         .mask = empty_sig,
         .flags = 0,
     }, null);
+    std.debug.print("--- SERVER BEGIN ---", .{});
     s.listen() catch |err| {
         const errno = std.posix.errno(-1);
-        std.debug.print("errno: {any}\n", .{errno});
-        std.debug.print("err = {any}\n", .{err});
+        std.debug.print("SERVER [ERROR] errno: {any}\n", .{errno});
+        std.debug.print("SERVER [ERROR] err = {any}\n", .{err});
     };
     std.debug.print("--- SERVER CLOSED ---", .{});
 }

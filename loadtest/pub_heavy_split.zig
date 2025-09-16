@@ -18,21 +18,21 @@ fn write_simple(c: *client.Client) !void {
         .nsec = 0,
     };
 
-    std.debug.print("pub2 sending {} small buffers.\n", .{n});
+    std.debug.print("PUB-2 sending {} small buffers.\n", .{n});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
             c.*.write("test 1", "hello from pub2", chebi.message.Type.text) catch |err| {
                 if (err == client.Error.errno) {
-                    std.debug.print("pub2 posix.errno: {}\n", .{std.posix.errno(-1)});
+                    std.debug.print("PUB-2 [ERROR] posix.errno: {}\n", .{std.posix.errno(-1)});
                 } else  {
-                    std.debug.print("pub2 simple write err: {any}.\n", .{err});
+                    std.debug.print("PUB-2 [ERROR] simple write err: {any}.\n", .{err});
                 }
                 return;
             };
         }
     }
-    std.debug.print("pub2 finished small buffer.\n", .{});
+    std.debug.print("PUB-2 finished small buffer.\n", .{});
 }
 
 // Send 1GB of the letter E.
@@ -61,21 +61,21 @@ fn bulk_write(c: *client.Client) !void {
     );
     defer msg.deinit();
 
-    std.debug.print("pub2 sending 1GB buffer.\n", .{});
+    std.debug.print("PUB-2 sending 1GB buffer.\n", .{});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
             c.*.write_msg(&msg) catch |err| {
                 if (err == client.Error.errno) {
-                    std.debug.print("pub2 posix.errno: {}\n", .{std.posix.errno(-1)});
+                    std.debug.print("PUB-2 [ERROR] posix.errno: {}\n", .{std.posix.errno(-1)});
                 } else  {
-                    std.debug.print("pub2 bulk writer err: {any}.\n", .{err});
+                    std.debug.print("PUB-2 [ERROR] bulk writer err: {any}.\n", .{err});
                 }
                 return;
             };
         }
     }
-    std.debug.print("pub2 finished 1GB buffer.\n", .{});
+    std.debug.print("PUB-2 finished 1GB buffer.\n", .{});
 }
 
 pub fn main() !void {
@@ -89,8 +89,6 @@ pub fn main() !void {
     defer c.deinit();
     c.id = 2;
     try c.connect();
-    try c.subscribe("test 1");
-    try c.subscribe("test 2");
     const simple_thread = try std.Thread.spawn(
         .{ .allocator = std.heap.smp_allocator },
         write_simple,
@@ -110,5 +108,5 @@ pub fn main() !void {
     };
     _ = std.c.nanosleep(&wait_info, null);
     try c.close();
-    std.debug.print("pub2 has finished\n", .{});
+    std.debug.print("PUB-2 has finished\n", .{});
 }

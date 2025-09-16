@@ -57,7 +57,7 @@ fn process_partial(socket: std.c.fd_t, pack: *packet.Packet) !void {
             pack.deinit();
             return err;
         };
-        std.debug.print("recv_len = {}; body.len = {}; diff = {}\n", .{recv_len, buf.len, diff});
+        std.log.debug("recv_len = {}; body.len = {}; diff = {}\n", .{recv_len, buf.len, diff});
         return Error.payload_len_invalid;
     }
 }
@@ -118,7 +118,7 @@ pub fn next_packet(alloc: std.mem.Allocator, socket: std.c.fd_t) !packet.Packet 
             result.deinit();
             return err;
         };
-        std.debug.print("recv_len = {}; body.len = {}\n", .{recv_len, old_len});
+        std.log.debug("recv_len = {}; body.len = {}\n", .{recv_len, old_len});
         return Error.payload_len_invalid;
     }
     return result;

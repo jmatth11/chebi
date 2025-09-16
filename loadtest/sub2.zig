@@ -20,17 +20,17 @@ pub fn main() !void {
         var msg = try c.next_msg();
         defer msg.deinit();
         msg_count = msg_count + 1;
-        std.debug.print("sub2 topic: {s}\n", .{msg.topic.?});
+        std.debug.print("SUB-2 topic: {s} -- ", .{msg.topic.?});
         if (msg.payload.?.len < 50) {
-            std.debug.print("sub2 msg: {s}\n", .{msg.payload.?});
+            std.debug.print("msg: \"{s}\"\n", .{msg.payload.?});
         } else {
             if (msg.payload) |payload| {
-                std.debug.print("sub2 large file recv: size({}).\n", .{payload.len});
+                std.debug.print("large file recv: size({}).\n", .{payload.len});
             }
         }
-        if (msg_count == 100) {
+        if (msg_count >= 100) {
             running = false;
         }
     }
-    std.debug.print("sub2 has finished\n", .{});
+    std.debug.print("SUB-2 has finished\n", .{});
 }
