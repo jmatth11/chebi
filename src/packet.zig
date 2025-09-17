@@ -179,6 +179,16 @@ pub const Packet = struct {
         return self.body.?.len;
     }
 
+    /// Create a duplicate of the packet.
+    pub fn dupe(self: *Packet) !Packet {
+        var result = Packet.init(self.alloc);
+        result.header = self.header;
+        if (self.body) |body| {
+            result.body = try self.alloc.dupe(u8, body);
+        }
+        return result;
+    }
+
     /// Write the packet out to the given buffer.
     pub fn write(self: *const Packet, buf: []u8) !void {
         if (buf.len < self.get_packet_size()) {
@@ -214,10 +224,10 @@ pub const PacketCollection = struct {
 
     /// Init an empty packet collection.
     pub fn init(alloc: std.mem.Allocator) PacketCollection {
-        var pc: PacketCollection = .{
+        const pc: PacketCollection = .{
             .alloc = alloc,
+            .packets = PacketList.init(alloc),
         };
-        pc.packets = PacketList.init(alloc);
         return pc;
     }
 
@@ -226,6 +236,21 @@ pub const PacketCollection = struct {
         var pc: PacketCollection = PacketCollection.init(alloc);
         try pc.add(entry);
         return pc;
+    }
+
+    pub fn dupe(self: *PacketCollection) !PacketCollection {
+        var result = PacketCollection.init(self.alloc);
+        result.opcode = self.opcode;
+        result.version = self.version;
+        result.channel = self.channel;
+        result.topic = try self.alloc.dupe(u8, self.topic);
+        result.packets = PacketList.init(self.alloc);
+        result.limit = self.limit;
+        for (self.packets.items) |*p| {
+            const entry = try p.*.dupe();
+            try result.packets.append(entry);
+        }
+        return result;
     }
 
     /// Add the given entry to the collection, pulling out relevant information.

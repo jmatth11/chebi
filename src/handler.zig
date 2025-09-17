@@ -5,11 +5,14 @@ const manager = @import("manager.zig");
 
 const TryAgainInfo = struct {
     attempts: usize = 0,
-    packet: PacketHandlerInfo,
+    from: std.c.fd_t,
+    collection: packet.PacketCollection,
+    to: std.c.fd_t,
 };
 
 const HandlerInfoList = std.array_list.Managed(PacketHandlerInfo);
 const TryAgainList = std.array_list.Managed(TryAgainInfo);
+pub const RecipientList = std.array_list.Managed(std.c.fd_t);
 
 /// Errors with the packet handler.
 pub const Error = error{
@@ -21,7 +24,10 @@ pub const Error = error{
 pub const PacketHandlerInfo = struct {
     from: std.c.fd_t,
     collection: packet.PacketCollection,
+    recipients: RecipientList,
 };
+
+const MAX_ATTEMPTS: comptime_int = 5;
 
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
@@ -59,72 +65,65 @@ pub const PacketHandler = struct {
         try self.collection.append(entry);
     }
 
-    fn process_single(self: *PacketHandler, info: *const PacketHandlerInfo, clients: manager.SocketList) !void {
-        const collection = info.collection;
-        const from = info.from;
+    fn process_single(self: *PacketHandler, from: std.c.fd_t, collection: *const packet.PacketCollection, to: std.c.fd_t) !void {
         for (collection.packets.items) |payload| {
-            for (clients.items) |socket| {
-                // skip ourselves
-                if (from == socket) {
-                    continue;
-                }
-                try self.send(socket, payload);
+            // skip ourselves
+            if (from == to) {
+                return;
             }
+            try self.send(to, payload);
         }
     }
 
-    pub fn process(self: *PacketHandler, mapping: manager.TopicMapping) !void {
-        var try_again_list_idx: usize = self.try_again_list.items.len;
-        while (try_again_list_idx > 0) : (try_again_list_idx -= 1) {
-            const index = try_again_list_idx - 1;
-            var tmp_item: *TryAgainInfo = &self.try_again_list.items[index];
-            tmp_item.attempts += 1;
-            const collection = tmp_item.packet.collection;
-            const topic = collection.topic;
-            const clients_opt: ?manager.SocketList = mapping.get(topic);
-            var remove: bool = true;
-            if (clients_opt) |clients| {
-                self.process_single(&tmp_item.packet, clients) catch |err| {
+    pub fn process_eagain(self: *PacketHandler, id: std.c.fd_t) !void {
+        for (self.try_again_list.items, 0..) |*item, idx| {
+            if (item.to == id) {
+                item.*.attempts += 1;
+                var remove: bool = true;
+                self.process_single(item.from, &item.collection, item.to) catch |err| {
                     if (err == Error.try_again) {
                         remove = false;
                     } else {
                         return err;
                     }
                 };
-            }
-            // remove if processed or if it's the N attempt
-            if (remove or tmp_item.attempts == 5) {
-                if (tmp_item.attempts == 3) {
-                    std.log.err("dropping message from {}\n", .{tmp_item.packet.from});
+                // remove if processed or if it's the N attempt
+                if (remove or item.attempts == MAX_ATTEMPTS) {
+                    if (item.attempts == MAX_ATTEMPTS) {
+                        std.log.err("dropping message from {}\n", .{item.from});
+                    }
+                    item.*.collection.deinit();
+                    _ = self.try_again_list.swapRemove(idx);
                 }
-                tmp_item.packet.collection.deinit();
-                _ = self.try_again_list.swapRemove(index);
+                return;
             }
         }
-        // TODO this is MVP approach, revisit to parallelize
+    }
+
+    pub fn process(self: *PacketHandler) !void {
         for (self.collection.items) |*info| {
-            const collection = info.collection;
-            const topic = collection.topic;
-            const clients_opt: ?manager.SocketList = mapping.get(topic);
-            var should_deinit: bool = true;
-            if (clients_opt) |clients| {
-                self.process_single(info, clients) catch |err| {
+            for (info.recipients.items) |id| {
+                self.process_single(info.from, &info.collection, id) catch |err| {
                     if (err == Error.try_again) {
-                        try self.try_again_list.append(.{ .packet = info.* });
-                        should_deinit = false;
+                        const entry: TryAgainInfo = .{
+                            .to = id,
+                            .from = info.from,
+                            .collection = try info.collection.dupe(),
+                        };
+                        try self.try_again_list.append(entry);
                     } else {
                         return err;
                     }
                 };
             }
-            if (should_deinit) {
-                // free collection once done
-                info.*.collection.deinit();
-            }
+            // free collection once done
+            info.*.collection.deinit();
+            info.recipients.deinit();
         }
-        // reset collection after processing
+        // reset collection.
         try self.collection.resize(0);
     }
+
 
     /// Send the packet to the given socket.
     pub fn send(self: *PacketHandler, socket: std.c.fd_t, payload: packet.Packet) !void {
@@ -146,7 +145,7 @@ pub const PacketHandler = struct {
         }
         if (self.try_again_list.items.len > 0) {
             for (self.try_again_list.items) |*item| {
-                item.*.packet.collection.deinit();
+                item.*.collection.deinit();
             }
         }
         self.collection.deinit();

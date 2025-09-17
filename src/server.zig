@@ -111,10 +111,9 @@ pub const Server = struct {
                     try self.event(evt.data.fd);
                 }
                 if ((evt.events & EPOLL.OUT) > 0) {
-                    // TODO this is terrible inefficient.
-                    // Rework packetHandler to distribute messages more efficiently
-                    // this may require a complete rework of how packetHandler works currently
-                    self.packetHandler.process(self.manager.topics) catch |err| {
+                    // process any messages that encountered EAGAIN/E_WOULD_BLOCK
+                    // on first send
+                    self.packetHandler.process_eagain(evt.data.fd) catch |err| {
                         if (err == handler.Error.errno) {
                             const errno = std.posix.errno(-1);
                             std.log.err("server errno: {any}\n", .{errno});
@@ -126,6 +125,8 @@ pub const Server = struct {
                     self.remove(evt.data.fd);
                 }
             }
+            // process any message that came in
+            try self.packetHandler.process();
         }
     }
 
@@ -223,10 +224,11 @@ pub const Server = struct {
                     release_packet_entry = false;
                     const ready_packet = try self.packetManager.store_or_pop(fd, packet_entry);
                     if (ready_packet) |p| {
-                        try self.packetHandler.push(.{
-                            .from = fd,
-                            .collection = p,
-                        });
+                        const handler_info = try self.newPacketHandler(fd, p);
+                        // only add if we have subscribers on the topic
+                        if (handler_info) |info_entry| {
+                            try self.packetHandler.push(info_entry);
+                        }
                     }
                 },
                 else => {
@@ -237,6 +239,21 @@ pub const Server = struct {
                 packet_entry.deinit();
             }
         }
+    }
+
+    fn newPacketHandler(self: *Server, from: std.c.fd_t, collection: packet.PacketCollection) !?handler.PacketHandlerInfo {
+        // TODO maybe move this stuff into packet handler itself.
+        var result: handler.PacketHandlerInfo = .{
+            .from = from,
+            .collection = collection,
+            .recipients = undefined,
+        };
+        const clients_opt = self.manager.topics.get(collection.topic);
+        if (clients_opt) |clients| {
+            result.recipients = try clients.clone();
+            return result;
+        }
+        return null;
     }
 
     fn server_info_packet(self: *Server) !packet.Packet {
