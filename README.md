@@ -1,5 +1,7 @@
 # Chebi
 
+![cheburashka typing on a computer](refs/chebi-logo.png "Chebi")
+
 **!! still experimental !!**
 
 A small message bus written in zig to easily spin up on the fly.
