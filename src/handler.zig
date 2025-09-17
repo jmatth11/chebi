@@ -27,6 +27,8 @@ pub const PacketHandlerInfo = struct {
     recipients: RecipientList,
 };
 
+const MAX_ATTEMPTS: comptime_int = 5;
+
 pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
     collection: HandlerInfoList,
@@ -74,9 +76,9 @@ pub const PacketHandler = struct {
     }
 
     pub fn process_eagain(self: *PacketHandler, id: std.c.fd_t) !void {
-        for (self.try_again_list.items, 0..) |item, idx| {
+        for (self.try_again_list.items, 0..) |*item, idx| {
             if (item.to == id) {
-                item.attempts += 1;
+                item.*.attempts += 1;
                 var remove: bool = true;
                 self.process_single(item.from, &item.collection, item.to) catch |err| {
                     if (err == Error.try_again) {
@@ -86,11 +88,11 @@ pub const PacketHandler = struct {
                     }
                 };
                 // remove if processed or if it's the N attempt
-                if (remove or item.attempts == 5) {
-                    if (item.attempts == 3) {
+                if (remove or item.attempts == MAX_ATTEMPTS) {
+                    if (item.attempts == MAX_ATTEMPTS) {
                         std.log.err("dropping message from {}\n", .{item.from});
                     }
-                    item.collection.deinit();
+                    item.*.collection.deinit();
                     _ = self.try_again_list.swapRemove(idx);
                 }
                 return;
@@ -114,11 +116,9 @@ pub const PacketHandler = struct {
                     }
                 };
             }
-            if (info.recipients.count() == 0) {
-                // free collection once done
-                info.*.collection.deinit();
-                self.alloc.free(info.recipients);
-            }
+            // free collection once done
+            info.*.collection.deinit();
+            info.recipients.deinit();
         }
         // reset collection.
         try self.collection.resize(0);
