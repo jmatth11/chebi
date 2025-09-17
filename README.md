@@ -69,6 +69,7 @@ const chebi = @import("chebi");
 const server = chebi.server;
 
 var s: server.Server = undefined;
+const empty_sig: [16]c_ulong = @splat(0);
 
 export fn shutdown(_: i32) void {
    s.stop();
@@ -80,9 +81,9 @@ pub fn main() !void {
     s = try server.Server.init(std.heap.smp_allocator, 3000);
 
     // setup a signal interrupt callback
-    std.posix.sigaction(std.posix.SIG.INT, &.{
+    _ = std.c.sigaction(std.c.SIG.INT, &.{
         .handler = .{ .handler = shutdown },
-        .mask = std.posix.empty_sigset,
+        .mask = empty_sig,
         .flags = 0,
     }, null);
 
@@ -155,7 +156,11 @@ pub fn main() !void {
     try c.write("test", "hello from pub", chebi.message.Type.text);
 
     // Ensure the message had enough time to send.
-    std.time.sleep(std.time.ms_per_s * 5);
+    const wait_info: std.c.timespec = .{
+        .sec = 1,
+        .nsec = 0,
+    };
+    _ = std.c.nanosleep(&wait_info, null);
 
     // close the client.
     try c.close();
