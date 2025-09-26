@@ -34,7 +34,7 @@ This allows large messages to not clog up the pipeline if smaller messages can b
 
 Add to your project like so.
 ```bash
-zig fetch --save "git+https://github.com/jmatth11/chebi#master"
+zig fetch --save "git+https://github.com/jmatth11/chebi#main"
 ```
 
 ### Setup
