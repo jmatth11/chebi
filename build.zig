@@ -88,7 +88,7 @@ pub fn build(b: *std.Build) void {
     const compile_loadtest = b.option(bool, "loadtest", "Compile the load test programs.") orelse false;
     const linkage = b.option(std.builtin.LinkMode, "linkage", "Link mode for utf8-zig library") orelse .static;
 
-    const lib_mod = b.createModule(.{
+    const lib_mod = b.addModule("chebi", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
