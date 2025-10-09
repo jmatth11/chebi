@@ -39,7 +39,7 @@ pub const Client = struct {
     errno: std.c.E = std.c.E.SUCCESS,
     channel: std.atomic.Value(u8),
     limit: ?usize = null,
-    compression: compression.CompressionType = .raw,
+    compression: compression.CompressionType = .none,
 
     /// Initialize Client with allocator and Address.
     pub fn init(alloc: std.mem.Allocator, srv_addr: std.net.Address) !Client {
@@ -195,7 +195,7 @@ pub const Client = struct {
                 }
             }
         }
-        if (self.compression != .raw and msg.msg_type == .compressed) {
+        if (msg.msg_type == .compressed) {
             msg.*.set_compression(self.compression);
         }
         const channel = self.get_channel();
@@ -229,7 +229,7 @@ pub const Client = struct {
             const col = try self.packetManager.store_or_pop(self.listener, pack);
             if (col) |c| {
                 received = true;
-                if (self.compression != .raw and c.is_compressed()) {
+                if (c.is_compressed()) {
                     msg.set_compression(self.compression);
                 }
                 try msg.from_packet_collection(c);

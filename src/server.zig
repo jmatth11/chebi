@@ -267,7 +267,7 @@ pub const Server = struct {
         pack.header.topic_len = 0;
         var flags: protocol.ServerFlags = .{};
         var offset: u16 = 1;
-        if (self.compression != .raw) {
+        if (self.compression != .none) {
             buf[1] = @intFromEnum(self.compression);
             offset += 1;
         } else {

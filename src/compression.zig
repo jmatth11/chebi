@@ -6,7 +6,8 @@ pub const Error = error{
 
 /// Compression Type for messages.
 pub const CompressionType = enum(u8) {
-    /// raw -- no compression
+    none,
+    /// raw
     raw,
     /// gzip
     gzip,
@@ -122,26 +123,31 @@ pub fn compress(alloc: std.mem.Allocator, compression_type: CompressionType, buf
 
 /// Decompress a given slice using the compression type.
 pub fn decompress(alloc: std.mem.Allocator, compression_type: CompressionType, buf: []const u8) ![]u8 {
-    if (buf.len == 0) {
-        return Error.empty_buffer;
-    }
-    var in: std.Io.Reader = .fixed(buf);
-    var aw: std.Io.Writer.Allocating = .init(alloc);
+    _ = alloc;
+    _ = compression_type;
+    _ = buf;
+    @panic("zig compression library doesn't work currently");
+    //if (buf.len == 0) {
+    //    return Error.empty_buffer;
+    //}
+    //var in: std.Io.Reader = .fixed(buf);
+    //var aw: std.Io.Writer.Allocating = .init(alloc);
 
-    switch (compression_type) {
-        .gzip, .zlib, .raw => {
-            const local_type = switch (compression_type) {
-                .gzip => std.compress.flate.Container.gzip,
-                .zlib => std.compress.flate.Container.zlib,
-                .raw => std.compress.flate.Container.raw,
-            };
-            var decompressor = std.compress.flate.Decompress.init(
-                &in,
-                local_type,
-                &.{},
-            );
-            _ = try decompressor.reader.streamRemaining(&aw.writer);
-        },
-    }
-    return try aw.toOwnedSlice();
+    //switch (compression_type) {
+    //    .gzip, .zlib, .raw => {
+    //        const local_type = switch (compression_type) {
+    //            .gzip => std.compress.flate.Container.gzip,
+    //            .zlib => std.compress.flate.Container.zlib,
+    //            .raw => std.compress.flate.Container.raw,
+    //        };
+    //        var decompressor = std.compress.flate.Decompress.init(
+    //            &in,
+    //            local_type,
+    //            &.{},
+    //        );
+    //        _ = try decompressor.reader.streamRemaining(&aw.writer);
+    //    },
+    //    none =>
+    //}
+    //return try aw.toOwnedSlice();
 }

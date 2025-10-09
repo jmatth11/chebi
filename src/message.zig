@@ -36,7 +36,7 @@ pub const Message = struct {
 
     /// Compression type to use.
     /// This will typically be set by the client.
-    compression_type: compression.CompressionType = .raw,
+    compression_type: compression.CompressionType = .none,
 
     pub fn init(alloc: std.mem.Allocator) Message {
         const m: Message = .{
@@ -106,7 +106,7 @@ pub const Message = struct {
             @memcpy(payload[offset..offset_len], try pack.get_payload());
             offset += len;
         }
-        if (self.compression_type != .raw and pc.is_compressed()) {
+        if (self.compression_type != .none and pc.is_compressed()) {
             defer self.alloc.free(payload);
             self.payload = try compression.decompress(
                 self.alloc,
@@ -134,7 +134,7 @@ pub const Message = struct {
         var is_single_pack: bool = true;
         if (self.payload) |body| {
             var local_body = body;
-            if (self.compression_type != .raw) {
+            if (self.compression_type != .none) {
                 local_body = try compression.compress(self.alloc, self.compression_type, local_body);
             }
             if (local_body.len > max_msg_size) {
@@ -168,7 +168,7 @@ pub const Message = struct {
         pack.header.info.channel = channel;
         if (body) |b| {
             var local_body = b;
-            if (self.compression_type != .raw) {
+            if (self.compression_type != .none) {
                 pack.header.info.compressed = true;
                 local_body = try compression.compress(self.alloc, self.compression_type, local_body);
             }
@@ -197,7 +197,7 @@ pub const Message = struct {
                 pack.header.flags.opcode = proto.OpCode.nc_continue;
             }
             pack.header.info.channel = channel;
-            pack.header.info.compressed = self.compression_type != .raw;
+            pack.header.info.compressed = self.compression_type != .none;
             _ = try pack.set_body(topic_name, body[offset..offset_len]);
             try result.add(pack);
             offset += max_msg_size;
