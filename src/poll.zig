@@ -6,6 +6,7 @@ pub const Error = error{
     creation_failed,
     add_failed,
     wait_failed,
+    wake_failed,
     delete_failed,
 };
 
@@ -70,6 +71,25 @@ pub fn Poll(comptime max_events: comptime_int) type {
                 return Error.wait_failed;
             }
             return @intCast(c_result);
+        }
+
+        /// Wake the poll with a WAKEUP event.
+        pub fn wake(self: *Self, listener: std.c.fd_t) Error!void {
+            var event: std.c.epoll_event = .{
+                .data = .{
+                    .fd = listener,
+                },
+                .events = EPOLL.WAKEUP,
+            };
+            const result = std.c.epoll_ctl(
+                self.fd,
+                EPOLL.CTL_MOD,
+                event.data.fd,
+                &event,
+            );
+            if (result == -1) {
+                return Error.wake_failed;
+            }
         }
 
         /// Delete file descriptor from poll.

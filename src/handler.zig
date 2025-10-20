@@ -48,21 +48,16 @@ pub const PacketHandler = struct {
     pool_error: bool = false,
 
     pub fn init(alloc: std.mem.Allocator) !PacketHandler {
-        const options: std.Thread.Pool.Options = .{
-            .allocator = alloc,
-        };
-        var pool: std.Thread.Pool = .{
-            .allocator = undefined,
-            .threads = undefined,
-            .ids = undefined,
-        };
-        try pool.init(options);
-        return .{
+        var result: PacketHandler = .{
             .alloc = alloc,
             .collection = HandlerInfoList.init(alloc),
             .try_again_list = TryAgainList.init(alloc),
-            .pool = pool,
+            .pool = undefined,
         };
+        try result.pool.init(.{
+            .allocator = alloc,
+        });
+        return result;
     }
 
     /// Push the structure onto the processing queue.
@@ -106,7 +101,9 @@ pub const PacketHandler = struct {
         for (self.collection.items) |*info| {
             self.pool.spawnWg(&wg, PacketHandler.process_threaded, .{ self, info });
         }
-        wg.wait();
+        if (!wg.isDone()) {
+            self.pool.waitAndWork(&wg);
+        }
         if (self.pool_error) {
             return Error.process_failed;
         }

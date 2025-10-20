@@ -76,6 +76,7 @@ pub const Server = struct {
     }
 
     pub fn deinit(self: *Server) void {
+        self.packetHandler.deinit();
         self.packetManager.deinit();
         self.manager.deinit();
         // TODO probably need to handle closing all connections and epoll
@@ -90,6 +91,9 @@ pub const Server = struct {
     /// Set the flag to stop the server.
     pub fn stop(self: *Server) void {
         self.running = false;
+        self.poll.wake(self.listener) catch |err| {
+            std.log.err("server: poll failed to delete server file descriptor - {any}\n", .{err});
+        };
     }
 
     /// Start listening.
@@ -106,7 +110,9 @@ pub const Server = struct {
             while (i < n) : (i += 1) {
                 const evt: std.c.epoll_event = self.poll.events[i];
                 if (evt.data.fd == self.listener) {
-                    try self.accept();
+                    if ((evt.events & EPOLL.IN) > 0) {
+                        try self.accept();
+                    }
                 } else if ((evt.events & EPOLL.IN) > 0) {
                     try self.event(evt.data.fd);
                 }
