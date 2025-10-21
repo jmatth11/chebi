@@ -11,6 +11,7 @@ const EPOLL = std.os.linux.EPOLL;
 const poll_ctx = poll.Poll(100);
 
 pub const Error = error{
+    signal_fd_failure,
     listener_setup,
     listener_bind,
     listener_set_nonblock,
@@ -72,10 +73,20 @@ pub const Server = struct {
             return Error.listener_set_nonblock;
         }
         try result.poll.add_listener(result.listener);
+        // add signals for the poll to wake up on.
+        try result.poll.sigmask_add(std.c.SIG.INT);
+        try result.poll.sigmask_add(std.c.SIG.TERM);
+        // create file descriptor that can listen for signals and add to epoll
+        const signal_result = std.c.signalfd(-1, &result.poll.sig_mask, 0);
+        if (signal_result == -1) {
+            return Error.signal_fd_failure;
+        }
+        try result.poll.add_connection(signal_result);
         return result;
     }
 
     pub fn deinit(self: *Server) void {
+        self.packetHandler.deinit();
         self.packetManager.deinit();
         self.manager.deinit();
         // TODO probably need to handle closing all connections and epoll
@@ -106,7 +117,9 @@ pub const Server = struct {
             while (i < n) : (i += 1) {
                 const evt: std.c.epoll_event = self.poll.events[i];
                 if (evt.data.fd == self.listener) {
-                    try self.accept();
+                    if ((evt.events & EPOLL.IN) > 0) {
+                        try self.accept();
+                    }
                 } else if ((evt.events & EPOLL.IN) > 0) {
                     try self.event(evt.data.fd);
                 }

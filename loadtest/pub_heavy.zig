@@ -1,10 +1,29 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const chebi = @import("chebi");
 const client = chebi.client;
 
+const name = "PUB-1";
 const n: comptime_int = 100;
 var running: bool = true;
 const empty_sig: [16]c_ulong = @splat(0);
+var debug: std.heap.DebugAllocator(.{}) = .init;
+fn get_alloc() std.mem.Allocator {
+    if (builtin.mode == .Debug) {
+        return debug.allocator();
+    } else {
+        return std.heap.smp_allocator;
+    }
+}
+const alloc = get_alloc();
+fn alloc_deinit() void {
+    if (builtin.mode == .Debug) {
+        const check = debug.deinit();
+        if (check == .leak) {
+            std.log.err("{s}:main: leak detected.\n", .{name});
+        }
+    }
+}
 
 export fn shutdown(_: i32) void {
     running = false;
@@ -18,21 +37,21 @@ fn write_simple(c: *client.Client) !void {
         .nsec = 0,
     };
 
-    std.debug.print("PUB-1 sending {} small buffers.\n", .{n});
+    std.debug.print("{s} sending {} small buffers.\n", .{name, n});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
             c.*.write("test 1", "hello from pub1", chebi.message.Type.text) catch |err| {
                 if (err == client.Error.errno) {
-                    std.debug.print("PUB-1 [ERROR] posix.errno: {}\n", .{std.posix.errno(-1)});
-                } else  {
-                    std.debug.print("PUB-1 [ERROR] simple write err: {any}.\n", .{err});
+                    std.debug.print("{s} [ERROR] posix.errno: {}\n", .{name, std.posix.errno(-1)});
+                } else {
+                    std.debug.print("{s} [ERROR] simple write err: {any}.\n", .{name, err});
                 }
                 return;
             };
         }
     }
-    std.debug.print("PUB-1 finished small buffer.\n", .{});
+    std.debug.print("{s} finished small buffer.\n", .{name});
 }
 
 // Send 1GB of the letter E.
@@ -42,7 +61,6 @@ fn bulk_write(c: *client.Client) !void {
         .sec = 1,
         .nsec = std.time.ms_per_s * 500,
     };
-    var alloc = std.heap.smp_allocator;
     var topic_name: []u8 = try alloc.alloc(u8, 6);
     topic_name[0] = 't';
     topic_name[1] = 'e';
@@ -61,21 +79,21 @@ fn bulk_write(c: *client.Client) !void {
     );
     defer msg.deinit();
 
-    std.debug.print("PUB-1 sending 1GB buffer.\n", .{});
+    std.debug.print("{s} sending 1GB buffer.\n", .{name});
     for (0..n) |_| {
         if (running) {
             _ = std.c.nanosleep(&wait_info, null);
             c.*.write_msg(&msg) catch |err| {
                 if (err == client.Error.errno) {
-                    std.debug.print("PUB-1 [ERROR] posix.errno: {}\n", .{std.posix.errno(-1)});
-                } else  {
-                    std.debug.print("PUB-1 [ERROR] bulk writer err: {any}.\n", .{err});
+                    std.debug.print("{s} [ERROR] posix.errno: {}\n", .{name, std.posix.errno(-1)});
+                } else {
+                    std.debug.print("{s} [ERROR] bulk writer err: {any}.\n", .{name, err});
                 }
                 return;
             };
         }
     }
-    std.debug.print("PUB-1 finished 1GB buffer.\n", .{});
+    std.debug.print("{s} finished 1GB buffer.\n", .{name});
 }
 
 pub fn main() !void {
@@ -84,18 +102,19 @@ pub fn main() !void {
         .mask = empty_sig,
         .flags = 0,
     }, null);
+    defer alloc_deinit();
     const addr = std.net.Address.initIp4([4]u8{ 127, 0, 0, 1 }, 3000);
-    var c = try client.Client.init(std.heap.smp_allocator, addr);
+    var c = try client.Client.init(alloc, addr);
     defer c.deinit();
     c.id = 1;
     try c.connect();
     const simple_thread = try std.Thread.spawn(
-        .{ .allocator = std.heap.smp_allocator },
+        .{ .allocator = alloc },
         write_simple,
         .{&c},
     );
     const bulk_thread = try std.Thread.spawn(
-        .{ .allocator = std.heap.smp_allocator },
+        .{ .allocator = alloc },
         bulk_write,
         .{&c},
     );
@@ -108,5 +127,5 @@ pub fn main() !void {
     };
     _ = std.c.nanosleep(&wait_info, null);
     try c.close();
-    std.debug.print("PUB-1 has finished\n", .{});
+    std.debug.print("{s} has finished\n", .{name});
 }
