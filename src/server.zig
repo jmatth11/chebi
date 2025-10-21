@@ -11,6 +11,7 @@ const EPOLL = std.os.linux.EPOLL;
 const poll_ctx = poll.Poll(100);
 
 pub const Error = error{
+    signal_fd_failure,
     listener_setup,
     listener_bind,
     listener_set_nonblock,
@@ -72,6 +73,15 @@ pub const Server = struct {
             return Error.listener_set_nonblock;
         }
         try result.poll.add_listener(result.listener);
+        // add signals for the poll to wake up on.
+        try result.poll.sigmask_add(std.c.SIG.INT);
+        try result.poll.sigmask_add(std.c.SIG.TERM);
+        // create file descriptor that can listen for signals and add to epoll
+        const signal_result = std.c.signalfd(-1, &result.poll.sig_mask, 0);
+        if (signal_result == -1) {
+            return Error.signal_fd_failure;
+        }
+        try result.poll.add_connection(signal_result);
         return result;
     }
 
@@ -91,9 +101,6 @@ pub const Server = struct {
     /// Set the flag to stop the server.
     pub fn stop(self: *Server) void {
         self.running = false;
-        self.poll.wake(self.listener) catch |err| {
-            std.log.err("server: poll failed to delete server file descriptor - {any}\n", .{err});
-        };
     }
 
     /// Start listening.

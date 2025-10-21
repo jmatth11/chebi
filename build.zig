@@ -13,6 +13,7 @@ fn create_exe(
         .root_source_file = b.path(path),
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     exe_mod.addImport("chebi", lib_mod);
     const exe = b.addExecutable(.{

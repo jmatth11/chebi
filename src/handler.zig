@@ -43,7 +43,7 @@ pub const PacketHandler = struct {
     alloc: std.mem.Allocator,
     collection: HandlerInfoList,
     try_again_list: TryAgainList,
-    pool: std.Thread.Pool,
+    pool: *std.Thread.Pool,
     try_again_mutex: std.Thread.Mutex = .{},
     pool_error: bool = false,
 
@@ -52,7 +52,7 @@ pub const PacketHandler = struct {
             .alloc = alloc,
             .collection = HandlerInfoList.init(alloc),
             .try_again_list = TryAgainList.init(alloc),
-            .pool = undefined,
+            .pool = try alloc.create(std.Thread.Pool),
         };
         try result.pool.init(.{
             .allocator = alloc,
@@ -124,7 +124,6 @@ pub const PacketHandler = struct {
     }
 
     pub fn deinit(self: *PacketHandler) void {
-        self.pool.deinit();
         if (self.collection.items.len > 0) {
             for (self.collection.items) |*item| {
                 item.*.collection.deinit();
@@ -136,6 +135,8 @@ pub const PacketHandler = struct {
             }
         }
         self.collection.deinit();
+        self.pool.deinit();
+        self.alloc.destroy(self.pool);
     }
 
     fn process_threaded(self: *PacketHandler, info: *PacketHandlerInfo) void {
