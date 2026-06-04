@@ -9,6 +9,8 @@ A small message bus written in zig to easily spin up on the fly.
 The goal of this message bus is to provide support for standard text and binary
 formats, with options for compression, and handles multiplexing messages.
 
+You can view the RFC style write up of the protocol [here](docs/rfc.md).
+
 ## Standard Capabilities
 
 The standard capabilities are supported:
